@@ -1,0 +1,13 @@
+command: ["python", "-m", "api.main"]
+
+# Workspace identifiers, not secrets -- safe to commit. DATABRICKS_TOKEN is
+# deliberately not listed here: Databricks Apps authenticate to the
+# workspace automatically, so the app should never need a manually-issued
+# token committed or configured here.
+env:
+  - name: MODEL_ENDPOINT
+    value: "databricks-gpt-oss-120b"
+  - name: DATABRICKS_HOST
+    value: "dbc-bc753968-b390.cloud.databricks.com"
+  - name: DATABRICKS_HTTP_PATH
+    value: "/sql/1.0/warehouses/70f1da7de38cdb62"

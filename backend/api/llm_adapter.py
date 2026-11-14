@@ -11,6 +11,7 @@ only translates field names so the rest of the API never has to know them:
 """
 
 import logging
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -18,9 +19,20 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import RateLimitError
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+# backend/ locally, or the app's root when deployed as a Databricks App with
+# source code path "backend" (api/ and LLM/ become top-level siblings then,
+# so `from ..LLM import llm` would reach past the top-level package and
+# fail). Put this directory on sys.path and import LLM absolutely instead,
+# which works the same whether "api" is nested under backend/ or top-level.
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
 
-from ..LLM import llm  # noqa: E402  (FAKE_LLM must be in os.environ before this import)
+# Repo root locally; harmlessly finds nothing in a deployment, where env
+# vars come from app.yaml / the Databricks Apps runtime instead.
+load_dotenv(_BACKEND_DIR.parent / ".env")
+
+from LLM import llm  # noqa: E402  (FAKE_LLM must be in os.environ before this import)
 
 logger = logging.getLogger("rabbit_hole.llm_adapter")
 

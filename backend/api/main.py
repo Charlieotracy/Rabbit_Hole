@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from typing import Dict
 
@@ -232,3 +233,12 @@ def get_run(run_id: str):
         "artifacts": run["artifacts"],
         "map": [_map_entry(nodes[node_id]) for node_id in run["node_order"]],
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    # Databricks Apps sets this and expects a 0.0.0.0 bind (same convention
+    # backend/LLM/app.py already uses).
+    port = int(os.environ.get("DATABRICKS_APP_PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
