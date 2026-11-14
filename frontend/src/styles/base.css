@@ -16,24 +16,8 @@ body {
   line-height: 1.55;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
-  /* Placeholder backdrop: sky, grass line, then soil getting darker.
-     Milestone 3 replaces this with the World scene and camera. */
+  /* The World scene paints the sky and ground; this only shows past its edges. */
   background-color: var(--bedrock);
-  background-image: linear-gradient(
-    to bottom,
-    var(--sky-top) 0,
-    var(--sky-bottom) calc(var(--horizon) - 16px),
-    var(--grass) calc(var(--horizon) - 16px),
-    var(--grass) var(--horizon),
-    var(--grass-dark) var(--horizon),
-    var(--grass-dark) calc(var(--horizon) + 8px),
-    var(--soil-1) calc(var(--horizon) + 8px),
-    var(--soil-2) calc(var(--horizon) + 40vh),
-    var(--soil-3) calc(var(--horizon) + 80vh),
-    var(--rock) calc(var(--horizon) + 120vh),
-    var(--bedrock) calc(var(--horizon) + 180vh)
-  );
-  background-repeat: no-repeat;
 }
 
 button,

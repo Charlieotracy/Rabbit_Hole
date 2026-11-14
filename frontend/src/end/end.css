@@ -1,0 +1,119 @@
+/* ---------- Artifact shelf ---------- */
+.shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shelf__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 10px;
+  background: var(--cream-shade);
+  border: 3px solid var(--ink);
+  text-align: center;
+}
+
+.shelf__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.shelf__layer {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+/* ---------- Tunnel map ---------- */
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  border: 3px solid var(--ink);
+}
+
+.map__tunnel-edge {
+  stroke: var(--ink);
+  stroke-width: 16;
+  stroke-linecap: square;
+}
+
+.map__tunnel {
+  stroke: #e8c99a;
+  stroke-width: 9;
+  stroke-linecap: square;
+}
+
+.map__stub {
+  stroke: rgba(255, 244, 220, 0.5);
+  stroke-width: 5;
+  stroke-dasharray: 6 6;
+}
+
+.map__chamber {
+  fill: var(--cream);
+  stroke: var(--ink);
+  stroke-width: 3;
+}
+
+.map__node--skipped .map__chamber {
+  fill: rgba(255, 244, 220, 0.4);
+  stroke: rgba(20, 12, 8, 0.7);
+  stroke-width: 2;
+}
+
+.map__depth {
+  fill: var(--ink);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.map__label {
+  fill: var(--cream);
+  stroke: var(--ink);
+  stroke-width: 4px;
+  paint-order: stroke;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+.map__node--skipped .map__label { opacity: 0.7; font-weight: 600; }
+
+.map__rock {
+  fill: var(--berry);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.map__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 10px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.map__key {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ink);
+}
+
+.map__key:not(:first-child) { margin-left: 8px; }
+.map__key--dug { background: var(--cream); }
+.map__key--skipped { background: rgba(255, 244, 220, 0.4); border-style: dashed; }
+.map__key--rock { background: var(--berry); }

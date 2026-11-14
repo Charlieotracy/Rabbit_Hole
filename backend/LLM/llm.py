@@ -169,7 +169,29 @@ Reply with JSON only:
 
 # ----------------------------------------------------------------- the layer
 
-LAYER_PROMPT = """The player is digging into: {root}
+# Shared by LAYER_PROMPT and CAVE_IN_PROMPT. No curly braces in here: it is
+# pasted into strings that go through str.format().
+QUESTION_RULES = """Question rules:
+- Test understanding, not memory: ask the player to apply the idea to a case,
+  predict what happens, or pick the reason why. Do not just ask them to find a
+  phrase from the explanation.
+- Exactly one option is correct, and someone who understood the explanation can
+  tell which one. The other three must be clearly wrong to them, and only to them.
+- Every wrong option must be tempting to someone who only skimmed. Build each one
+  from one of these:
+  * a common misconception a beginner would actually hold about this idea
+  * a statement that is true on its own but does not answer this question
+  * a near miss that gets one key detail wrong (cause swapped with effect, wrong
+    direction, wrong amount, a related term mixed up)
+- All four options match in length, grammar, and level of detail, and are the same
+  kind of thing (all causes, all numbers, all places, ...).
+- The correct option must not stand out: do not copy the explanation's exact
+  wording into it, and do not make it the longest or most hedged one.
+- No joke or absurd options, nothing off topic, no "all of the above" or
+  "none of the above", and no giveaway words like "always" or "never" that only
+  appear in wrong options."""
+
+LAYER_PROMPT ="""The player is digging into: {root}
 Path so far: {path}
 Next layer topic: {topic}
 Depth: {depth} (1 is the surface; each level should be a little harder than the last)
@@ -193,8 +215,9 @@ Write this layer as JSON with exactly these fields:
 
 Rules:
 - The question must be answerable from the explanation alone.
-- Exactly one option is correct. The wrong options should be believable.
-- Tunnels go deeper from this layer, differ from each other, and avoid covered topics."""
+- Tunnels go deeper from this layer, differ from each other, and avoid covered topics.
+
+""" + QUESTION_RULES
 
 
 def generate_layer(topic, path, depth):
@@ -242,6 +265,7 @@ Correct answer: {correct}
 
 Explain the SAME idea again using a different style: {style}.
 Then ask a NEW question on the same idea (not the same question reworded).
+The new question must be answerable from your new explanation alone.
 
 Reply with JSON only:
 {{
@@ -251,7 +275,9 @@ Reply with JSON only:
     "options": ["four", "answer", "choices", "here"],
     "answer_index": the position (0-3) of the one correct option
   }}
-}}"""
+}}
+
+""" + QUESTION_RULES
 
 
 def cave_in(layer, chosen_index, attempt):

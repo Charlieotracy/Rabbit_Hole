@@ -1,12 +1,16 @@
+import Particles from '../../effects/Particles'
 import { overlay, pixelRects } from './pixel'
+import PixelSprite from './PixelSprite'
 
 // The guide: a small cream bunny in a miner's helmet with a headlamp.
 // 24×29 art pixels, front-facing and sitting.
 //
-// Animation states built so far:
-//   idle  - blinks every few seconds and bobs gently (always on)
-//   talk  - mouth opens and closes (pass talking={true})
-// Later milestones add dig, cheer, dazed and pop.
+// mood: "idle"  - blinks and bobs gently
+//       "talk"  - mouth opens and closes
+//       "dig"   - shakes fast while dirt flies
+//       "cheer" - hops with an open grin
+//       "dazed" - wobbles with squinty eyes and stars
+// lamp: show the headlamp beam (for dark layers)
 
 const W = 24
 const H = 29
@@ -67,19 +71,38 @@ const MOUTH_OPEN = overlay(W, H, {
   20: '...........KK...........',
 })
 
-export default function Bunny({ talking = false, scale = 4, className = '' }) {
+// Squinty "> <" eyes for dazed.
+const DAZED_EYES = overlay(W, H, {
+  15: '......KW........WK......',
+  16: '......WK........KW......',
+})
+
+const STAR = ['..Y..', '.YYY.', 'YYYYY', '.YYY.', '..Y..']
+const STAR_PALETTE = { Y: 'var(--gold)' }
+
+export default function Bunny({ mood = 'idle', lamp = false, scale = 4, className = '' }) {
   return (
-    <svg
-      className={`sprite bunny ${talking ? 'bunny--talking' : ''} ${className}`}
-      viewBox={`0 0 ${W} ${H}`}
-      width={W * scale}
-      height={H * scale}
-      aria-hidden="true"
-      focusable="false"
-    >
-      <g>{pixelRects(BODY, PALETTE, 'b')}</g>
-      <g className="bunny__blink">{pixelRects(BLINK, PALETTE, 'e')}</g>
-      <g className="bunny__mouth">{pixelRects(MOUTH_OPEN, PALETTE, 'm')}</g>
-    </svg>
+    <span className={`bunny bunny--${mood} ${lamp ? 'bunny--lamp' : ''} ${className}`} aria-hidden="true">
+      {lamp && <span className="bunny__beam" />}
+      <svg
+        className="sprite bunny__sprite"
+        viewBox={`0 0 ${W} ${H}`}
+        width={W * scale}
+        height={H * scale}
+        focusable="false"
+      >
+        <g>{pixelRects(BODY, PALETTE, 'b')}</g>
+        <g className="bunny__blink">{pixelRects(BLINK, PALETTE, 'e')}</g>
+        <g className="bunny__dazed">{pixelRects(DAZED_EYES, PALETTE, 'z')}</g>
+        <g className="bunny__mouth">{pixelRects(MOUTH_OPEN, PALETTE, 'm')}</g>
+      </svg>
+      {mood === 'dazed' && (
+        <span className="bunny__stars">
+          <PixelSprite rows={STAR} palette={STAR_PALETTE} scale={Math.max(2, scale - 1)} />
+          <PixelSprite rows={STAR} palette={STAR_PALETTE} scale={Math.max(2, scale - 2)} />
+        </span>
+      )}
+      {mood === 'dig' && <Particles className="bunny__dirt" count={10} loop />}
+    </span>
   )
 }
