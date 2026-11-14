@@ -151,8 +151,34 @@ Run this as a sequence:
 9. **Ambient and polish.** Add critters and dust, reduced motion, mobile, and optional sound.
 10. **Cleanup.** Delete the old `src/components/*` test views, run `npm run lint`, `npm test` and `npm run build`.
 
-## 7. Backend asks (non-blocking; the UI degrades gracefully without them)
-- `turn.style`: the cave-in re-explanation style (analogy, example or step by step).
-- `artifact.description` and `artifact.emoji` (or an icon keyword).
-- Short tunnel objects such as `{title, teaser}` instead of plain strings. Until then, the UI should accept either form.
-- After a correct answer, an optional `explanation` line ("why that's right") shown on the artifact card.
+## 7. Backend notes: two APIs exist
+
+**`backend/api/main.py`** is the stub API. The frontend calls it today and the contract in section 0 describes it.
+
+**`backend/LLM/app.py`** is the real LLM service, and it has a **different contract**:
+
+| Route | Body | Returns |
+|---|---|---|
+| `POST /runs` | `{topic}` | `{run_id, layer}` |
+| `POST /runs/:id/answer` | `{chosen_index}` | `{correct, answer_index}` |
+| `POST /runs/:id/cave-in` | `{chosen_index}` | `{explanation, style, question}` |
+| `POST /runs/:id/dig` | `{tunnel: "<tunnel string>"}` | `{layer}` |
+
+A `layer` has these fields:
+- `topic`, `depth`, `explanation`
+- `question: {text, options[4], answer_index}`
+- `artifact: {name, icon}`
+- `tunnels: [3 strings]`
+
+Details that affect the frontend:
+- **The artifact arrives with the layer**, before the player answers. Keep it hidden until break-through.
+- **A wrong answer takes two calls:** `/answer`, then `/cave-in`. The UI should play the cave-in animation while the second call is in flight.
+- **`style`** is one of `analogy`, `concrete example` or `step by step`. Show it as a tag on the cave-in panel.
+- **`artifact.icon`** is one of `fossil, scroll, gear, telescope, flask, book, map, gem, camera, atom, leaf, coin`. Draw one pixel-art SVG per keyword in `scene/sprites/icons/`, with `gem` as the fallback.
+- **There is no `GET /runs/:id` summary.** The frontend must build the end-screen stats and map itself from what it has seen. Track the path, cave-ins per layer and the skipped tunnels in `useRun`.
+- **`/dig` is fast** most of the time because the next layers are generated in the background. The first `/runs` call is the slow one.
+- **The layer includes `answer_index`,** so a player could read the correct answer in DevTools. That's acceptable for a hackathon, but don't render it.
+
+**Plan.** Only `src/api.js` and `src/useRun.js` should know which contract is in use. Before milestone 4, agree with the backend person which API is final. Then adapt `api.js` to return the same shapes the screens expect, so the UI components don't care which backend is behind them.
+
+Still nice to have from the backend: a "why that's right" line after a correct answer, and a one-line teaser per tunnel.
