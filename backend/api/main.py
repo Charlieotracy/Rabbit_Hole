@@ -1,12 +1,12 @@
-import random
 import uuid
 from typing import Dict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import storage
+from . import llm_adapter, storage
 
 app = FastAPI()
 
@@ -18,6 +18,8 @@ app.add_middleware(
 )
 
 RUNS: Dict[str, dict] = {}
+
+_MAP_FIELDS = ("id", "parent_id", "topic", "depth", "status", "cave_ins")
 
 
 @app.on_event("startup")
@@ -37,23 +39,6 @@ class DigRequest(BaseModel):
     tunnel_index: int
 
 
-def _new_turn(topic: str) -> dict:
-    return {
-        "layer": f"Placeholder explanation of {topic}.",
-        "question": f"Placeholder question about {topic}?",
-        "options": ["Option A", "Option B", "Option C", "Option D"],
-        "correct_index": random.randint(0, 3),
-    }
-
-
-def _public_turn(turn: dict) -> dict:
-    return {
-        "layer": turn["layer"],
-        "question": turn["question"],
-        "options": turn["options"],
-    }
-
-
 def _get_run(run_id: str) -> dict:
     run = RUNS.get(run_id)
     if run is None:
@@ -61,69 +46,95 @@ def _get_run(run_id: str) -> dict:
     return run
 
 
+def _llm_error(exc: RuntimeError) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"error": str(exc)})
+
+
+def _map_entry(node: dict) -> dict:
+    return {field: node[field] for field in _MAP_FIELDS}
+
+
 @app.post("/runs")
 def create_run(body: RunRequest):
+    try:
+        raw_layer = llm_adapter.generate_layer(topic=body.topic, path=[], depth=1)
+    except RuntimeError as exc:
+        return _llm_error(exc)
+
     run_id = str(uuid.uuid4())
-    turn = _new_turn(body.topic)
     root_id = "n1"
-    RUNS[run_id] = {
-        "topic": body.topic,
+    root_node = {
+        "id": root_id,
+        "parent_id": None,
+        "topic": raw_layer["topic"],
         "depth": 1,
-        "turn": turn,
+        "status": "dug",
+        "cave_ins": 0,
+        "raw_layer": raw_layer,
+        "question": raw_layer["question"],
+    }
+    RUNS[run_id] = {
+        "topic": raw_layer["topic"],
+        "depth": 1,
         "tunnels": None,
+        "pending_layers": {},
         "artifacts": [],
-        "nodes": {
-            root_id: {
-                "id": root_id,
-                "parent_id": None,
-                "topic": body.topic,
-                "depth": 1,
-                "status": "dug",
-                "cave_ins": 0,
-            }
-        },
+        "nodes": {root_id: root_node},
         "node_order": [root_id],
         "current_node_id": root_id,
         "cleared_node_ids": set(),
         "next_node_num": 2,
+        "path": [raw_layer["topic"]],
     }
-    storage.record_run_start(run_id, body.topic)
+    storage.record_run_start(run_id, raw_layer["topic"])
     return {
         "run_id": run_id,
         "depth": 1,
-        "topic": body.topic,
-        "turn": _public_turn(turn),
+        "topic": raw_layer["topic"],
+        "turn": llm_adapter.turn_view(raw_layer["explanation"], root_node["question"]),
     }
 
 
 @app.post("/runs/{run_id}/answer")
 def answer_run(run_id: str, body: AnswerRequest):
     run = _get_run(run_id)
-    turn = run["turn"]
-    if not 0 <= body.option_index < len(turn["options"]):
+    node = run["nodes"][run["current_node_id"]]
+    question = node["question"]
+    if not 0 <= body.option_index < len(question["options"]):
         raise HTTPException(status_code=400, detail="option_index out of range")
 
-    node = run["nodes"][run["current_node_id"]]
-
-    if body.option_index == turn["correct_index"]:
+    if body.option_index == question["answer_index"]:
         run["cleared_node_ids"].add(node["id"])
-        artifact = {"name": f"{node['topic']} Artifact", "depth": node["depth"]}
+        artifact = llm_adapter.artifact_view(node["raw_layer"]["artifact"], node["depth"])
         run["artifacts"].append(artifact)
-        tunnels = [f"{node['topic']}: tunnel {i + 1}" for i in range(3)]
+        tunnels = node["raw_layer"]["tunnels"]
         run["tunnels"] = tunnels
         storage.record_answer(
             run_id, node["id"], node["topic"], node["depth"], body.option_index, True
         )
+        # Pre-generate the next layer for all three tunnels in parallel so
+        # digging feels instant; any tunnel this misses is generated live
+        # in dig_run instead.
+        run["pending_layers"] = llm_adapter.generate_ahead(
+            path=run["path"], depth=node["depth"] + 1, tunnels=tunnels
+        )
         return {"correct": True, "artifact": artifact, "tunnels": tunnels}
 
+    attempt = node["cave_ins"]  # 0-based, before incrementing
+    try:
+        result = llm_adapter.cave_in(
+            layer=node["raw_layer"], chosen_index=body.option_index, attempt=attempt
+        )
+    except RuntimeError as exc:
+        return _llm_error(exc)
+
     node["cave_ins"] += 1
+    node["question"] = result["question"]
     storage.record_answer(
         run_id, node["id"], node["topic"], node["depth"], body.option_index, False
     )
     storage.record_cave_in(run_id, node["id"], node["topic"], node["depth"], node["cave_ins"])
-    new_turn = _new_turn(node["topic"])
-    run["turn"] = new_turn
-    return {"correct": False, "cave_in": _public_turn(new_turn)}
+    return {"correct": False, "cave_in": llm_adapter.cave_in_view(result)}
 
 
 @app.post("/runs/{run_id}/dig")
@@ -137,35 +148,57 @@ def dig_run(run_id: str, body: DigRequest):
 
     parent_node = run["nodes"][run["current_node_id"]]
     new_depth = parent_node["depth"] + 1
+    chosen_tunnel = tunnels[body.tunnel_index]
+
+    raw_layer = run["pending_layers"].get(chosen_tunnel)
+    if raw_layer is None:
+        try:
+            raw_layer = llm_adapter.generate_layer(
+                topic=chosen_tunnel, path=run["path"], depth=new_depth
+            )
+        except RuntimeError as exc:
+            return _llm_error(exc)
 
     chosen_node = None
     for i, tunnel_topic in enumerate(tunnels):
         node_id = f"n{run['next_node_num']}"
         run["next_node_num"] += 1
-        status = "dug" if i == body.tunnel_index else "skipped"
-        node = {
-            "id": node_id,
-            "parent_id": parent_node["id"],
-            "topic": tunnel_topic,
-            "depth": new_depth,
-            "status": status,
-            "cave_ins": 0,
-        }
+        if i == body.tunnel_index:
+            node = {
+                "id": node_id,
+                "parent_id": parent_node["id"],
+                "topic": raw_layer["topic"],
+                "depth": new_depth,
+                "status": "dug",
+                "cave_ins": 0,
+                "raw_layer": raw_layer,
+                "question": raw_layer["question"],
+            }
+            chosen_node = node
+        else:
+            node = {
+                "id": node_id,
+                "parent_id": parent_node["id"],
+                "topic": tunnel_topic,
+                "depth": new_depth,
+                "status": "skipped",
+                "cave_ins": 0,
+            }
         run["nodes"][node_id] = node
         run["node_order"].append(node_id)
-        if status == "dug":
-            chosen_node = node
 
     run["current_node_id"] = chosen_node["id"]
     run["depth"] = new_depth
     run["tunnels"] = None
+    run["pending_layers"] = {}
+    run["path"].append(chosen_node["topic"])
 
-    new_turn = _new_turn(chosen_node["topic"])
-    run["turn"] = new_turn
     return {
         "depth": new_depth,
         "topic": chosen_node["topic"],
-        "turn": _public_turn(new_turn),
+        "turn": llm_adapter.turn_view(
+            chosen_node["raw_layer"]["explanation"], chosen_node["question"]
+        ),
     }
 
 
@@ -188,5 +221,5 @@ def get_run(run_id: str):
         "layers_cleared": layers_cleared,
         "first_try_count": first_try_count,
         "artifacts": run["artifacts"],
-        "map": [nodes[node_id] for node_id in run["node_order"]],
+        "map": [_map_entry(nodes[node_id]) for node_id in run["node_order"]],
     }

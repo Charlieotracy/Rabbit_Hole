@@ -1,14 +1,18 @@
 import { buildTree } from '../buildTree'
+import Panel from '../ui/Panel'
+import PixelButton from '../ui/PixelButton'
+import Title from '../ui/Title'
 
 function TreeNode({ node }) {
   const tags = []
   if (node.status === 'skipped') tags.push('skipped')
   if (node.cave_ins > 0) tags.push(`${node.cave_ins} cave-in${node.cave_ins > 1 ? 's' : ''}`)
   return (
-    <li>
-      {node.topic} (depth {node.depth}){tags.length > 0 && ` [${tags.join(', ')}]`}
+    <li className={node.status === 'skipped' ? 'tree__node tree__node--skipped' : 'tree__node'}>
+      {node.topic} <span className="dim">(layer {node.depth})</span>
+      {tags.length > 0 && <span className="tree__tags"> [{tags.join(', ')}]</span>}
       {node.children.length > 0 && (
-        <ul>
+        <ul className="tree">
           {node.children.map((child) => (
             <TreeNode key={child.id} node={child} />
           ))}
@@ -21,26 +25,52 @@ function TreeNode({ node }) {
 export default function EndScreen({ summary, onReset }) {
   const tree = buildTree(summary.map)
   return (
-    <div>
-      <h2>Surfaced: {summary.topic}</h2>
-      <p>Depth reached: {summary.depth}</p>
-      <p>Layers cleared: {summary.layers_cleared}</p>
-      <p>First-try count: {summary.first_try_count}</p>
-      <h3>Artifacts</h3>
-      <ul>
-        {summary.artifacts.map((a, i) => (
-          <li key={i}>
-            {a.name} (depth {a.depth})
-          </li>
-        ))}
-      </ul>
-      <h3>Map</h3>
-      <ul>
-        {tree.map((root) => (
-          <TreeNode key={root.id} node={root} />
-        ))}
-      </ul>
-      <button onClick={onReset}>New run</button>
-    </div>
+    <>
+      <Title tagline="Surfaced" subline={summary.topic} />
+      <Panel label="Run complete">
+        <dl className="stats">
+          <div>
+            <dt>Depth</dt>
+            <dd>{summary.depth}</dd>
+          </div>
+          <div>
+            <dt>Layers cleared</dt>
+            <dd>{summary.layers_cleared}</dd>
+          </div>
+          <div>
+            <dt>First try</dt>
+            <dd>
+              {summary.first_try_count}/{summary.layers_cleared}
+            </dd>
+          </div>
+        </dl>
+      </Panel>
+
+      <Panel tone="gold" label="Artifacts">
+        {summary.artifacts.length === 0 ? (
+          <p className="dim">None yet. Clear a layer to unearth one.</p>
+        ) : (
+          <ul className="artifact-list">
+            {summary.artifacts.map((a, i) => (
+              <li key={i}>
+                {a.name} <span className="dim">(layer {a.depth})</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+
+      <Panel label="Your tunnel">
+        <ul className="tree tree--root">
+          {tree.map((root) => (
+            <TreeNode key={root.id} node={root} />
+          ))}
+        </ul>
+      </Panel>
+
+      <PixelButton size="lg" onClick={onReset}>
+        ▼ Dig again ▼
+      </PixelButton>
+    </>
   )
 }

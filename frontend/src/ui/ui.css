@@ -1,0 +1,187 @@
+/* ---------- Panel ---------- */
+/* Notched corners: an outer frame (border colour) and an inner body (panel
+   colour), both clipped to the same stepped polygon. The glow is a
+   drop-shadow on the wrapper so it follows the clipped shape. */
+.panel {
+  --n: calc(var(--px) * 2);
+  --tone: var(--accent);
+  --notch: polygon(
+    0 var(--n), var(--n) var(--n), var(--n) 0,
+    calc(100% - var(--n)) 0, calc(100% - var(--n)) var(--n), 100% var(--n),
+    100% calc(100% - var(--n)), calc(100% - var(--n)) calc(100% - var(--n)),
+    calc(100% - var(--n)) 100%, var(--n) 100%,
+    var(--n) calc(100% - var(--n)), 0 calc(100% - var(--n))
+  );
+  position: relative;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tone) 50%, transparent));
+}
+
+.panel--danger { --tone: var(--danger); }
+.panel--gold { --tone: var(--gold); }
+.panel--plain {
+  --tone: var(--panel-edge);
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.35));
+}
+
+.panel--tagged { margin-top: 12px; }
+
+.panel__frame {
+  padding: var(--border);
+  background: var(--tone);
+  clip-path: var(--notch);
+  transition: background-color 0.25s ease;
+}
+
+.panel__body {
+  padding: 24px 28px;
+  background: var(--panel);
+  clip-path: var(--notch);
+}
+
+.panel__body > :first-child { margin-top: 0; }
+.panel__body > :last-child { margin-bottom: 0; }
+
+.panel__tag {
+  position: absolute;
+  top: -11px;
+  left: 20px;
+  z-index: 1;
+  padding: 2px 8px;
+  background: var(--tone);
+  color: var(--panel);
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.panel__label {
+  margin: 0 0 12px;
+  color: var(--danger);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+}
+
+.panel--gold .panel__label { color: var(--gold); }
+
+/* ---------- PixelButton ---------- */
+.pbtn {
+  --tone: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75em;
+  padding: 0.7em 1.4em;
+  background: var(--panel);
+  color: var(--text);
+  border: var(--border) solid var(--tone);
+  border-radius: 0;
+  box-shadow: 0 0 0 1px var(--panel-edge), 0 0 10px color-mix(in srgb, var(--tone) 40%, transparent);
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.12s ease, box-shadow 0.12s ease, transform 0.06s ease;
+}
+
+.pbtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--tone) 14%, var(--panel));
+  box-shadow: 0 0 0 1px var(--panel-edge), 0 0 18px color-mix(in srgb, var(--tone) 60%, transparent);
+}
+
+.pbtn:active:not(:disabled) { transform: translateY(2px); }
+
+.pbtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.pbtn--danger {
+  --tone: var(--danger);
+  background: var(--danger);
+  color: var(--panel);
+  border-color: color-mix(in srgb, var(--danger) 70%, black);
+}
+
+.pbtn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, white);
+}
+
+.pbtn--ghost {
+  --tone: color-mix(in srgb, var(--accent) 55%, var(--panel));
+  background: transparent;
+  box-shadow: none;
+}
+
+.pbtn--option {
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pbtn__key {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.8em;
+  height: 1.8em;
+  border: 2px solid var(--tone);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+}
+
+.pbtn--sm { padding: 0.45em 0.9em; font-size: 0.75rem; }
+.pbtn--lg { width: 100%; padding: 1em 1.4em; font-size: clamp(1rem, 3.5vw, 1.5rem); letter-spacing: 0.3em; }
+
+/* ---------- Title ---------- */
+.title {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  min-height: calc(var(--horizon) - 56px);
+  text-align: center;
+}
+
+.title__logo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.9rem, 7.5vw, 4.5rem);
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f6fafc;
+  text-shadow:
+    -0.05em 0 0 var(--danger),
+    0.05em 0 0 var(--accent),
+    0 0.04em 0 rgba(20, 22, 31, 0.25);
+}
+
+.title__tagline {
+  margin: 0;
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  font-size: clamp(0.8rem, 2.6vw, 1.1rem);
+  letter-spacing: 0.6em;
+  text-transform: uppercase;
+  /* letter-spacing adds trailing space; pull it back so it centres */
+  margin-right: -0.6em;
+}
+
+.title__subline {
+  margin: 0;
+  color: var(--text-on-sky);
+  font-size: clamp(0.75rem, 2.2vw, 0.95rem);
+  letter-spacing: 0.08em;
+}

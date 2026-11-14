@@ -3,27 +3,51 @@ import EndScreen from './components/EndScreen'
 import QuestionView from './components/QuestionView'
 import StartScreen from './components/StartScreen'
 import { useRun } from './useRun'
+import Panel from './ui/Panel'
+import PixelButton from './ui/PixelButton'
+import Title from './ui/Title'
 
-// Minimal, unstyled test page that proves the frontend <-> backend loop works.
 export default function App() {
   const run = useRun()
   const loading = run.phase === 'loading'
   const inRun = run.runId && run.phase !== 'start' && run.phase !== 'surfaced'
 
   return (
-    <div>
-      <h1>Rabbit Hole (test page)</h1>
+    <main className="app">
       {run.runId && run.phase !== 'surfaced' && (
-        <p>
-          Topic: {run.topic} | Depth: {run.depth}{' '}
-          <button onClick={run.surface} disabled={loading}>
-            Surface
-          </button>
-        </p>
+        <Panel tone="plain" as="header" className="hud">
+          <div className="hud__row">
+            <span className="hud__depth">
+              −{run.depth}
+              <small>{run.depth === 1 ? 'layer' : 'layers'}</small>
+            </span>
+            <span className="hud__topic" title={run.topic}>
+              {run.topic}
+            </span>
+            <PixelButton size="sm" variant="ghost" onClick={run.surface} disabled={loading}>
+              Surface ↑
+            </PixelButton>
+          </div>
+        </Panel>
       )}
 
-      {loading && <p>Loading...</p>}
-      {run.error && <p style={{ color: 'red' }}>Error: {run.error}</p>}
+      {run.phase === 'start' && (
+        <Title
+          tagline="Dig into anything"
+          subline="any topic · one layer at a time · earn your depth"
+        />
+      )}
+
+      {loading && (
+        <p className="status" role="status">
+          Digging<span className="status__dots" aria-hidden="true" />
+        </p>
+      )}
+      {run.error && (
+        <Panel tone="danger" className="error" role="alert">
+          <p>{run.error}</p>
+        </Panel>
+      )}
 
       {run.phase === 'start' && <StartScreen onStart={run.startRun} disabled={loading} />}
 
@@ -31,6 +55,7 @@ export default function App() {
       {inRun && run.turn && (run.phase === 'question' || run.phase === 'caved_in' || loading) && !run.artifact && (
         <QuestionView
           turn={run.turn}
+          depth={run.depth}
           caveIn={run.wrongCount > 0}
           wrongCount={run.wrongCount}
           onAnswer={run.answer}
@@ -49,6 +74,6 @@ export default function App() {
       {run.phase === 'surfaced' && run.summary && (
         <EndScreen summary={run.summary} onReset={run.reset} />
       )}
-    </div>
+    </main>
   )
 }
