@@ -28,8 +28,9 @@ ICONS = ["fossil", "scroll", "gear", "telescope", "flask", "book",
 SYSTEM = (
     "You write content for Rabbit Hole, a learning game where players dig into a "
     "topic one layer at a time and must answer a question to go deeper. "
-    "Write for a curious beginner: plain words, one idea at a time, no jargon "
-    "without explaining it. Reply with a single JSON object and nothing else."
+    "The player starts as a curious beginner and gets more advanced as they dig: "
+    "always use plain words, one idea at a time, and no jargon without explaining "
+    "it, but follow the difficulty asked for at each depth. Reply with a single JSON object and nothing else."
 )
 
 
@@ -171,9 +172,7 @@ Reply with JSON only:
 # Shared by LAYER_PROMPT and CAVE_IN_PROMPT. No curly braces in here: it is
 # pasted into strings that go through str.format().
 QUESTION_RULES = """Question rules:
-- Test understanding, not memory: ask the player to apply the idea to a case,
-  predict what happens, or pick the reason why. Do not just ask them to find a
-  phrase from the explanation.
+- Never ask the player to just find a phrase from the explanation.
 - Exactly one option is correct, and someone who understood the explanation can
   tell which one. The other three must be clearly wrong to them, and only to them.
 - Every wrong option must be tempting to someone who only skimmed. Build each one
@@ -190,11 +189,60 @@ QUESTION_RULES = """Question rules:
   "none of the above", and no giveaway words like "always" or "never" that only
   appear in wrong options."""
 
-LAYER_PROMPT ="""The player is digging into: {root}
+# How hard a layer is, by depth. Each tier asks for a different kind of
+# question, so going deeper changes what the player has to do, not just the
+# subject. No curly braces in here (pasted into str.format() templates).
+DIFFICULTY_TIERS = [
+    # (deepest depth this tier covers, description)
+    (2, """Difficulty: SURFACE (depth 1-2).
+- Explanation: introduce the idea in everyday words with one simple example.
+- Question type: check the player understood the core idea. Describe a simple,
+  new example (not the one in the explanation) and ask what it shows, or ask
+  which statement correctly describes the idea.
+- Wrong options: common beginner misconceptions. A careful reader rules them
+  out quickly."""),
+    (4, """Difficulty: SHALLOW (depth 3-4).
+- Explanation: go past the basics; name the mechanism or the rule behind the
+  idea, not just what happens.
+- Question type: apply the idea. Give a short scenario the explanation did not
+  mention and ask the player to predict what happens or choose what to do.
+- Wrong options: near misses that would be right if one detail of the rule
+  were different."""),
+    (6, """Difficulty: DEEP (depth 5-6).
+- Explanation: cover the reason why, including a limit, exception, or
+  condition where the idea stops working.
+- Question type: reason about cause, condition, or exception. Ask why something
+  happens, what would change if one factor changed, or which situation the idea
+  does NOT apply to.
+- Wrong options: all sound expert. Each is a real, related effect or a correct
+  statement about a neighboring idea, so only someone who grasped the exact
+  reason can pick the right one."""),
+    (None, """Difficulty: CORE (depth 7 and below).
+- Explanation: treat the player as a strong learner; give the precise version
+  of the idea, including how it connects to an earlier topic on their path.
+  Include every fact the question needs, so it is still answerable from this
+  explanation alone.
+- Question type: multi-step reasoning. The player must combine two facts from
+  the explanation, or follow a chain of cause and effect two steps, to reach the
+  answer. A single fact alone must not be enough.
+- Wrong options: each is the answer you reach if you skip one step, apply the
+  idea one step too far, or use only one of the two facts."""),
+]
+
+
+def difficulty_for(depth):
+    for deepest, text in DIFFICULTY_TIERS:
+        if deepest is None or depth <= deepest:
+            return text
+
+
+LAYER_PROMPT = """The player is digging into: {root}
 Path so far: {path}
 Next layer topic: {topic}
-Depth: {depth} (1 is the surface; each level should be a little harder than the last)
+Depth: {depth} (1 is the surface; deeper layers must be harder)
 Already covered, do not repeat: {covered}
+
+{difficulty}
 
 Write this layer as JSON with exactly these fields:
 {{
@@ -230,6 +278,7 @@ def generate_layer(topic, path, depth):
         topic=topic,
         depth=depth,
         covered=", ".join(path) if path else "nothing yet",
+        difficulty=difficulty_for(depth),
         icons=json.dumps(ICONS),
     )
 
@@ -264,6 +313,10 @@ Correct answer: {correct}
 Explain the SAME idea again using a different style: {style}.
 Then ask a NEW question on the same idea (not the same question reworded).
 The new question must be answerable from your new explanation alone.
+Keep the question at this layer's difficulty (the explanation can be clearer,
+but the question must not get easier):
+
+{difficulty}
 
 Reply with JSON only:
 {{
@@ -293,6 +346,7 @@ def cave_in(layer, chosen_index, attempt):
         chosen=q["options"][chosen_index] if 0 <= chosen_index < 4 else "(no answer)",
         correct=q["options"][q["answer_index"]],
         style=style,
+        difficulty=difficulty_for(layer.get("depth", 1)),
     )
 
     last_error = None
