@@ -26,10 +26,11 @@ logger = logging.getLogger("rabbit_hole.llm_adapter")
 
 # llm.generate_ahead() fires all 3 tunnels at once, each making up to 2 model
 # calls (ask_model + the checker) -- 6 simultaneous calls, which trips
-# Databricks' free-tier QPS limit (429 REQUEST_LIMIT_EXCEEDED). We prefetch
-# fewer tunnels, stagger their start, and retry a rate-limited one with a
-# short backoff, instead of calling their all-or-nothing generate_ahead().
-PREFETCH_TUNNEL_COUNT = 2
+# Databricks' free-tier QPS limit (429 REQUEST_LIMIT_EXCEEDED) and is
+# all-or-nothing: one rate-limited tunnel discards the other two's results.
+# We stagger each tunnel's start and retry a rate-limited one with a short
+# backoff instead, so occasional 429s get absorbed instead of losing layers.
+PREFETCH_TUNNEL_COUNT = 3
 PREFETCH_STAGGER_SECONDS = 1.5
 PREFETCH_RETRY_BACKOFF_SECONDS = 1.5
 PREFETCH_MAX_ATTEMPTS = 3  # 1 try + 2 retries
