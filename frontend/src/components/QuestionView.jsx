@@ -1,19 +1,27 @@
+import Panel from '../ui/Panel'
+import PixelButton from '../ui/PixelButton'
+
 // Shows a turn: used for a normal question and for a cave-in.
-export default function QuestionView({ turn, caveIn, wrongCount, onAnswer, disabled }) {
+export default function QuestionView({ turn, depth, caveIn, wrongCount, onAnswer, disabled }) {
   return (
-    <div>
-      {caveIn && <h3>Cave-in! (wrong answers on this layer: {wrongCount})</h3>}
-      <p>{turn.layer}</p>
-      <h3>{turn.question}</h3>
-      <ul>
+    <Panel
+      tone={caveIn ? 'danger' : 'accent'}
+      tag={caveIn ? `${wrongCount} cave-in${wrongCount > 1 ? 's' : ''}` : undefined}
+      label={caveIn ? 'Cave-in · try another angle' : `Layer ${depth}`}
+      aria-live="polite"
+    >
+      {caveIn && turn.style && <p className="style-chip">Explained as: {turn.style}</p>}
+      <p className="layer-text">{turn.layer}</p>
+      <hr className="divider" />
+      <h2 className="question">{turn.question}</h2>
+      <div className="options">
         {turn.options.map((option, i) => (
-          <li key={i}>
-            <button onClick={() => onAnswer(i)} disabled={disabled}>
-              {option}
-            </button>
-          </li>
+          <PixelButton key={i} variant="option" onClick={() => onAnswer(i)} disabled={disabled}>
+            <span className="pbtn__key">{i + 1}</span>
+            {option}
+          </PixelButton>
         ))}
-      </ul>
-    </div>
+      </div>
+    </Panel>
   )
 }

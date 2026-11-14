@@ -1,0 +1,38 @@
+/* Design tokens. Every colour, font and pixel unit lives here. */
+:root {
+  /* Sky and surface */
+  --sky-top: #bfe3f2;
+  --sky-bottom: #eef7fb;
+  --grass: #5fae4e;
+  --grass-dark: #3d7f35;
+
+  /* Strata, top to bottom */
+  --soil-1: #6b4a2f;
+  --soil-2: #523621;
+  --soil-3: #3b2718;
+  --rock: #2a2320;
+  --bedrock: #17131a;
+  --core: #3a1420;
+
+  /* UI */
+  --panel: #14161f;
+  --panel-edge: #0b0c12;
+  --accent: #5fd3ea; /* cyan glow: borders, focus */
+  --accent-ink: #2b8fa8; /* darker cyan for text on the light sky */
+  --danger: #ef6b86; /* pink: cave-in, labels, flag */
+  --gold: #f2c25c; /* artifacts */
+  --text: #e9ecf2;
+  --text-dim: #8a90a3;
+  --text-on-sky: #5d6f82;
+
+  /* Type */
+  --font-display: 'Silkscreen', ui-monospace, monospace;
+  --font-mono: 'Space Mono', ui-monospace, monospace;
+
+  /* Pixel unit for notches and borders */
+  --px: 4px;
+  --border: 3px;
+
+  /* Where the sky meets the grass (placeholder until the World scene lands) */
+  --horizon: 320px;
+}

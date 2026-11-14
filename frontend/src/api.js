@@ -28,7 +28,9 @@ async function request(method, path, body) {
     let detail = `Request failed (${response.status})`
     try {
       const data = await response.json()
-      if (typeof data.detail === 'string') detail = data.detail
+      // 4xx errors use {detail}; 503 (LLM generation failed) uses {error}. See API.md.
+      if (typeof data.error === 'string') detail = data.error
+      else if (typeof data.detail === 'string') detail = data.detail
       else if (data.detail !== undefined) detail = JSON.stringify(data.detail)
     } catch {
       // no JSON body; keep the default message

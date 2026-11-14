@@ -9,12 +9,13 @@ This plan is for Claude Code (or a person) to follow one milestone at a time. Ea
 - **`src/useRun.js`:** the run state machine. Phases are `start | question | caved_in | broke_through | loading | surfaced`.
 - **`src/buildTree.js`:** turns the flat `map` into a tree for the end screen. It has tests.
 - **`src/components/*`:** unstyled test views. They will be replaced by the screens below, reusing the same props and handlers.
-- **Backend contract today:**
+- **Backend contract** (summary only; the full spec is in `/API.md`):
   - `POST /runs {topic}` returns `{run_id, depth, topic, turn}`.
   - `POST /runs/:id/answer {option_index}` returns either `{correct: true, artifact, tunnels}` or `{correct: false, cave_in: turn}`.
   - `POST /runs/:id/dig {tunnel_index}` returns `{depth, topic, turn}`.
   - `GET /runs/:id` returns the summary and map.
-  - A `turn` is `{layer, question, options[4]}`. Answers are **multiple choice**, not typed.
+  - A `turn` is `{layer, question, options[4]}`. A cave-in turn also has `style`. Answers are **multiple choice**, not typed.
+  - An artifact is `{name, icon, depth}`. Errors are `{detail}` (4xx) or `{error}` (503).
 
 ## 1. Visual language (borrowed from Krillion, re-themed underground)
 
@@ -151,36 +152,22 @@ Run this as a sequence:
 9. **Ambient and polish.** Add critters and dust, reduced motion, mobile, and optional sound.
 10. **Cleanup.** Delete the old `src/components/*` test views, run `npm run lint`, `npm test` and `npm run build`.
 
-## 7. Backend notes: two APIs exist
+## 7. Backend notes
 
-> **For now, ignore `backend/LLM/`.** All milestones build against the placeholder API in `backend/api/main.py`. Come back to this section only when it's time to switch to the real LLM service.
+**`API.md` at the repo root is the source of truth** for every endpoint, request, response and error. If this plan and `API.md` disagree, follow `API.md`.
 
-**`backend/api/main.py`** is the stub API. The frontend calls it today and the contract in section 0 describes it.
+`backend/api/main.py` now gets content from the LLM code in `backend/LLM/llm.py` through `llm_adapter.py`. The frontend only ever talks to `backend/api` and never calls `backend/LLM` directly.
 
-**`backend/LLM/app.py`** is the real LLM service, and it has a **different contract**:
-
-| Route | Body | Returns |
-|---|---|---|
-| `POST /runs` | `{topic}` | `{run_id, layer}` |
-| `POST /runs/:id/answer` | `{chosen_index}` | `{correct, answer_index}` |
-| `POST /runs/:id/cave-in` | `{chosen_index}` | `{explanation, style, question}` |
-| `POST /runs/:id/dig` | `{tunnel: "<tunnel string>"}` | `{layer}` |
-
-A `layer` has these fields:
-- `topic`, `depth`, `explanation`
-- `question: {text, options[4], answer_index}`
-- `artifact: {name, icon}`
-- `tunnels: [3 strings]`
-
-Details that affect the frontend:
-- **The artifact arrives with the layer**, before the player answers. Keep it hidden until break-through.
-- **A wrong answer takes two calls:** `/answer`, then `/cave-in`. The UI should play the cave-in animation while the second call is in flight.
-- **`style`** is one of `analogy`, `concrete example` or `step by step`. Show it as a tag on the cave-in panel.
-- **`artifact.icon`** is one of `fossil, scroll, gear, telescope, flask, book, map, gem, camera, atom, leaf, coin`. Draw one pixel-art SVG per keyword in `scene/sprites/icons/`, with `gem` as the fallback.
-- **There is no `GET /runs/:id` summary.** The frontend must build the end-screen stats and map itself from what it has seen. Track the path, cave-ins per layer and the skipped tunnels in `useRun`.
-- **`/dig` is fast** most of the time because the next layers are generated in the background. The first `/runs` call is the slow one.
-- **The layer includes `answer_index`,** so a player could read the correct answer in DevTools. That's acceptable for a hackathon, but don't render it.
-
-**Plan.** Only `src/api.js` and `src/useRun.js` should know which contract is in use. Before milestone 4, agree with the backend person which API is final. Then adapt `api.js` to return the same shapes the screens expect, so the UI components don't care which backend is behind them.
+Details that matter for the UI:
+- **Error shapes:** 4xx errors are `{detail}`. A 503 means LLM generation failed, and its body is `{error}`. `api.js` handles both.
+- **Cave-ins:** a cave-in turn includes `style`, one of `analogy`, `concrete example` or `step by step`. Show it on the cave-in panel.
+- **Artifacts:** `artifact` is `{name, icon, depth}`. `icon` is one of `fossil, scroll, gear, telescope, flask, book, map, gem, camera, atom, leaf, coin`. Draw one pixel-art SVG per keyword in `scene/sprites/icons/`, with `gem` as the fallback.
+- **Correct answer:** the server never sends it to the frontend.
+- **Response times:**
+  - The first `POST /runs` is slow, because a real layer is being generated. Give its loading state the most attention.
+  - `dig` is usually instant, because the three tunnels are pre-generated in the background.
+  - A cave-in is slow, because a new explanation is generated.
+- **The `topic` field:** it can reword what the player typed. Display the returned `topic`, not the input.
+- **Local testing without the model:** put `FAKE_LLM=1` in `Rabbit_Hole/.env`. You get canned content, and the correct option is always the one labelled "Right answer".
 
 Still nice to have from the backend: a "why that's right" line after a correct answer, and a one-line teaser per tunnel.
