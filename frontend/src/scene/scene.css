@@ -115,3 +115,55 @@
   .scenery__cloud--3 { left: 30%; }
   .scenery__flock { left: 20%; }
 }
+
+/* ---------- World: fixed behind the UI, moved by one transform ---------- */
+.world {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.world__column {
+  position: relative;
+  transition: transform 1.3s cubic-bezier(0.65, 0, 0.35, 1);
+  will-change: transform;
+}
+
+/* Sky down to the grass; the light grass strip is the sky's bottom 16px so
+   the bunny and trees stand in it. */
+.world__sky {
+  position: relative;
+  background: linear-gradient(
+    to bottom,
+    var(--sky-top) 0,
+    var(--sky-bottom) calc(100% - 16px),
+    var(--grass) calc(100% - 16px)
+  );
+}
+
+.world__ground {
+  height: 8px;
+  background: var(--grass-dark);
+}
+
+.stratum {
+  position: relative;
+  overflow: hidden;
+}
+
+.stratum__prop {
+  position: absolute;
+  opacity: 0.9;
+}
+
+.stratum__prop--ember { animation: ember-glow 1.8s steps(2, end) infinite; }
+
+@keyframes ember-glow {
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world__column { transition-duration: 0.01s; }
+  .stratum__prop--ember { animation: none; }
+}

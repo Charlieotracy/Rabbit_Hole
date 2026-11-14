@@ -3,4 +3,8 @@
 @import './ui/ui.css';
 @import './scene/sprites/sprites.css';
 @import './scene/scene.css';
+@import './effects/effects.css';
 @import './styles/screens.css';
+@import './hud/hud.css';
+@import './chat/chat.css';
+@import './end/end.css';

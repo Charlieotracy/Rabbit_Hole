@@ -1,5 +1,14 @@
 /* ---------- Bunny ---------- */
 .bunny {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.bunny__sprite { position: relative; }
+
+.bunny--idle .bunny__sprite,
+.bunny--talk .bunny__sprite {
   animation: bunny-bob 1.6s steps(1, end) infinite;
 }
 
@@ -8,14 +17,20 @@
   animation: bunny-blink 4.5s steps(1, end) infinite;
 }
 
-.bunny__mouth { opacity: 0; }
+.bunny__mouth,
+.bunny__dazed { opacity: 0; }
 
-.bunny--talking .bunny__mouth {
-  animation: bunny-talk 0.26s steps(1, end) infinite;
-}
+.bunny--talk .bunny__mouth { animation: bunny-talk 0.26s steps(1, end) infinite; }
+.bunny--cheer .bunny__mouth { opacity: 1; }
+.bunny--dazed .bunny__dazed { opacity: 1; }
+.bunny--dazed .bunny__blink { animation: none; }
 
-/* One art pixel up and down. The SVG scale is set by its width, so move by
-   a percentage of the sprite height (1/29 ≈ 3.45%). */
+.bunny--dig .bunny__sprite { animation: bunny-dig 0.22s steps(1, end) infinite; }
+.bunny--cheer .bunny__sprite { animation: bunny-hop 0.5s cubic-bezier(0.3, 0.7, 0.4, 1) 2; }
+.bunny--dazed .bunny__sprite { animation: bunny-wobble 0.45s steps(2, end) 3; }
+
+/* Move by a percentage of the sprite height so it works at any scale
+   (one art pixel = 1/29 ≈ 3.45%). */
 @keyframes bunny-bob {
   0% { transform: translateY(0); }
   50% { transform: translateY(-3.45%); }
@@ -32,9 +47,62 @@
   50% { opacity: 0; }
 }
 
+@keyframes bunny-dig {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-4%, 3.45%); }
+  50% { transform: translate(0, 0); }
+  75% { transform: translate(4%, 3.45%); }
+}
+
+@keyframes bunny-hop {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-22%); }
+}
+
+@keyframes bunny-wobble {
+  0% { transform: rotate(-5deg); }
+  100% { transform: rotate(5deg); }
+}
+
+.bunny__stars {
+  position: absolute;
+  top: -10%;
+  right: -12%;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.bunny__stars > :nth-child(1) { animation: star-twinkle 0.5s steps(1, end) infinite; }
+.bunny__stars > :nth-child(2) { margin-top: 10px; animation: star-twinkle 0.5s steps(1, end) infinite -0.25s; }
+
+@keyframes star-twinkle {
+  50% { opacity: 0.2; }
+}
+
+.bunny__dirt {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+}
+
+/* Headlamp beam for dark layers: a soft cone of light from the helmet. */
+.bunny__beam {
+  position: absolute;
+  left: 50%;
+  top: 8%;
+  width: 240%;
+  height: 140%;
+  transform: translate(-50%, -78%);
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 246, 176, 0.38), rgba(255, 246, 176, 0) 62%);
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .bunny,
-  .bunny--talking .bunny__mouth {
+  .bunny .bunny__sprite,
+  .bunny--talk .bunny__mouth,
+  .bunny__stars > * {
     animation: none;
   }
+  .bunny--talk .bunny__mouth { opacity: 1; }
 }

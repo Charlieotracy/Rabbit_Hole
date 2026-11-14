@@ -211,15 +211,23 @@ src/
    - Rebuild the Title, the Bubble component (replacing Panel) and PixelButton's pressable style.
    - Draw the Bunny sprite with `idle` and `talk`.
    - Rebuild the start screen as the bunny, a giant bubble, the topic input, the carrot send button and the suggestion chips.
-3. **World and camera.** Build Sky, Ground and Strata with `strata.js`, and drive the camera translateY from `depth`. The bunny lives in the world. Verify that changing depth from 0 to 5 by hand scrolls smoothly.
-4. **Chat engine.** Build `useLayerLog`, ChatLog, BunnySays with the typewriter effect, PlayerSays, ReplyChips (keys 1–4) and `lines.js`. The layer screen becomes explanation, question, chips, then the player bubble.
-5. **Loading.** Add `pendingAction`, the Typing indicator and the bunny's `dig` animation, and test with `VITE_FAKE_DELAY_MS=2000`.
-6. **Cave-in.** Add the shake, the dirt crumbs, `dazed`, the cracked player bubble, the style-aware intro line and the pips.
-7. **Break-through.** Add `cheer`, the dig burst, the artifact bubble and **12 pixel artifact icons**. Then add the tunnel arches, the descent and the log reset.
-8. **HUD.** Add the depth gauge, the Surface key with in-chat confirmation, and the trail.
-9. **Surface and end screen.** Add the camera rising, `pop`, the summary bubble, the stats, the artifact shelf, the SVG tunnel map, share and dig again.
-10. **Ambient and polish.** Add critters, dust and clouds, plus reduced motion and the mobile pass.
-11. **Cleanup.** Delete the leftover `Panel` and old test views, run `npm run lint`, `npm test` and `npm run build`, and update the README.
+3. ✅ **World and camera** (done).
+4. ✅ **Chat engine** (done).
+5. ✅ **Loading** (done).
+6. ✅ **Cave-in** (done).
+7. ✅ **Break-through** (done).
+8. ✅ **HUD** (done).
+9. ✅ **Surface and end screen** (done).
+10. ✅ **Ambient and polish** (done). Sound effects are still optional and not built.
+11. ✅ **Cleanup** (done).
+
+### Decisions made while building (easy to revisit)
+- **Where screens live:** the start screen lives *inside* the World's sky, so it slides away as the camera descends. The run and end screens are overlays in front of the world.
+- **Avatar:** the bunny avatar is sticky on the left of the chat, not drawn in the world. On dark layers (4+) its headlamp glows.
+- **Timing:** a correct answer always shows at least about 1.3s of digging before the artifact appears. Starting a run takes at least 1.2s and digging a tunnel at least 0.9s, so fast responses still read as digging.
+- **Earlier attempts:** after a cave-in, the earlier attempt stays in the chat but dimmed.
+- **Strata:** Topsoil, Clay, Sandstone, Shale, Bedrock, Deep rock, Mantle, then Core (numbered beyond that). Each has its own buried props: roots, worms, pebbles, fossils, bones, crystals and embers.
+- **Corners:** bubbles use medium pixel-round corners in the chat. Only the bunny's big surface speech bubbles (start and end) use the extra-round ones.
 
 ## 7. Backend notes
 

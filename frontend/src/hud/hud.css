@@ -1,0 +1,156 @@
+/* ---------- Top bar ---------- */
+.hud {
+  position: sticky;
+  top: 10px;
+  z-index: 10;
+}
+
+.hud .bubble__body { padding: 8px 12px; }
+
+.hud__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.hud__row .pbtn { flex: none; margin-bottom: 0; }
+
+.hud__depth {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hud__depth small {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.hud__trail {
+  flex: 1;
+  min-width: 0;
+}
+
+.hud__trail ol {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.hud__trail li {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud__trail li:last-child {
+  flex-shrink: 0;
+  max-width: 60%;
+  color: var(--ink);
+}
+
+.hud__trail li + li::before {
+  content: '›';
+  margin: 0 6px;
+  color: var(--ink-soft);
+}
+
+.hud__pips {
+  flex: none;
+  display: flex;
+  gap: 3px;
+}
+
+.hud__pips i {
+  width: 9px;
+  height: 9px;
+  background: var(--berry);
+  border: 2px solid var(--ink);
+}
+
+@media (max-width: 640px) {
+  .hud__depth small { display: none; }
+  .hud__trail li:not(:last-child) { display: none; }
+}
+
+/* ---------- Depth gauge (wide screens) ---------- */
+.gauge {
+  position: fixed;
+  left: max(20px, calc(50% - 600px));
+  top: 50%;
+  z-index: 2;
+  display: none;
+  height: 56vh;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+@media (min-width: 1100px) {
+  .gauge { display: block; }
+}
+
+.gauge__track {
+  position: relative;
+  width: 8px;
+  height: 100%;
+  background: rgba(255, 244, 220, 0.35);
+  border: 2px solid rgba(20, 12, 8, 0.6);
+}
+
+.gauge__tick {
+  position: absolute;
+  left: -6px;
+  width: 16px;
+  height: 4px;
+  background: var(--cream);
+  border: 1px solid var(--ink);
+  transform: translateY(-50%);
+}
+
+.gauge__tick.is-dug,
+.gauge__tick.is-here { background: var(--carrot); }
+
+.gauge__label {
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  opacity: 0.6;
+  text-shadow: 0 2px 0 var(--ink);
+}
+
+.gauge__tick.is-here .gauge__label {
+  opacity: 1;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* Carrot-coloured pixel arrow pointing at the current layer. */
+.gauge__marker {
+  position: absolute;
+  left: -22px;
+  width: 14px;
+  height: 14px;
+  background: var(--carrot);
+  clip-path: polygon(0 0, 50% 0, 50% 25%, 75% 25%, 75% 40%, 100% 40%, 100% 60%, 75% 60%, 75% 75%, 50% 75%, 50% 100%, 0 100%);
+  transform: translateY(-50%);
+  filter: drop-shadow(0 2px 0 var(--ink));
+  transition: top 1.3s cubic-bezier(0.65, 0, 0.35, 1);
+}

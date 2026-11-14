@@ -5,12 +5,14 @@ import { mirror, pixelRects, transpose } from '../scene/sprites/pixel'
 //
 // variant: "bunny" (default) | "player" | "cave" | "artifact" | "plain"
 // tail:    "none" (default) | "down" | "left" | "right"
-// round:   "lg" (pixel-circle corners, default for speech) | "sm" (small, for the HUD)
+// round:   "lg" (big pixel-circle corners, for the bunny's main speech bubbles)
+//          | "md" (default) | "sm" (small, for the HUD)
 // label:   optional small heading inside, e.g. "LAYER 2 · EVENT HORIZON"
 
 // Corner shapes: how far each row from the top is inset, in --px units.
 const CORNERS = {
   lg: steppedCorners([9, 6, 5, 4, 3, 2, 1, 1, 1]),
+  md: steppedCorners([5, 3, 2, 1, 1]),
   sm: steppedCorners([3, 2, 1]),
 }
 
@@ -48,7 +50,7 @@ function Tail({ side }) {
 export default function Bubble({
   variant = 'bunny',
   tail = 'none',
-  round = variant === 'plain' ? 'sm' : 'lg',
+  round = variant === 'plain' ? 'sm' : 'md',
   label,
   className = '',
   style,
