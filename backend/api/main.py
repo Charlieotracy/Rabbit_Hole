@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Dict
 
@@ -7,6 +8,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import llm_adapter, storage
+
+logger = logging.getLogger("rabbit_hole.api")
 
 app = FastAPI()
 
@@ -46,7 +49,8 @@ def _get_run(run_id: str) -> dict:
     return run
 
 
-def _llm_error(exc: RuntimeError) -> JSONResponse:
+def _llm_error(exc: Exception) -> JSONResponse:
+    logger.exception("LLM generation call failed")
     return JSONResponse(status_code=503, content={"error": str(exc)})
 
 
@@ -58,7 +62,7 @@ def _map_entry(node: dict) -> dict:
 def create_run(body: RunRequest):
     try:
         raw_layer = llm_adapter.generate_layer(topic=body.topic, path=[], depth=1)
-    except RuntimeError as exc:
+    except Exception as exc:
         return _llm_error(exc)
 
     run_id = str(uuid.uuid4())
@@ -113,11 +117,16 @@ def answer_run(run_id: str, body: AnswerRequest):
             run_id, node["id"], node["topic"], node["depth"], body.option_index, True
         )
         # Pre-generate the next layer for all three tunnels in parallel so
-        # digging feels instant; any tunnel this misses is generated live
-        # in dig_run instead.
-        run["pending_layers"] = llm_adapter.generate_ahead(
-            path=run["path"], depth=node["depth"] + 1, tunnels=tunnels
-        )
+        # digging feels instant; any tunnel this misses (including all three,
+        # if this call itself fails) is generated live in dig_run instead,
+        # so a prefetch failure must never cost the player this artifact.
+        try:
+            run["pending_layers"] = llm_adapter.generate_ahead(
+                path=run["path"], depth=node["depth"] + 1, tunnels=tunnels
+            )
+        except Exception:
+            logger.exception("generate_ahead prefetch failed; falling back to live dig")
+            run["pending_layers"] = {}
         return {"correct": True, "artifact": artifact, "tunnels": tunnels}
 
     attempt = node["cave_ins"]  # 0-based, before incrementing
@@ -125,7 +134,7 @@ def answer_run(run_id: str, body: AnswerRequest):
         result = llm_adapter.cave_in(
             layer=node["raw_layer"], chosen_index=body.option_index, attempt=attempt
         )
-    except RuntimeError as exc:
+    except Exception as exc:
         return _llm_error(exc)
 
     node["cave_ins"] += 1
@@ -156,7 +165,7 @@ def dig_run(run_id: str, body: DigRequest):
             raw_layer = llm_adapter.generate_layer(
                 topic=chosen_tunnel, path=run["path"], depth=new_depth
             )
-        except RuntimeError as exc:
+        except Exception as exc:
             return _llm_error(exc)
 
     chosen_node = None
