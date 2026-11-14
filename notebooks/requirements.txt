@@ -1,1 +1,5 @@
 requests==2.32.5
+databricks-sql-connector==4.3.0
+databricks-sdk==0.102.0
+databricks-vectorsearch==0.66
+python-dotenv==1.2.1

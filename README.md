@@ -1,52 +1,57 @@
-# Rabbit_Hole
+# Rabbit Hole
 
-Type any topic, dig as deep as you can, and come out knowing something new. A pixel bunny in a miner's helmet explains each layer in a chat, quizzes you, and digs deeper when you get it right.
+A learning game: type any topic, read a short layer about it, and answer a
+question to dig deeper. Get it wrong and the idea gets re-explained a
+different way (a "cave-in") before you try again. Dig as deep as you can
+and collect an artifact at each layer.
 
-## Running it locally
+**[ screenshot goes here ]**
 
-You need two terminals, both started from the repo root.
+## Architecture
 
-**One-time setup**
+- **Frontend** — React (Vite), talks only to the backend's HTTP API.
+- **Backend** — FastAPI (`backend/api/`). Holds run state in memory and
+  calls the LLM layer for content.
+- **LLM layer** (`backend/LLM/`) — generates each layer, question, and
+  cave-in by calling a model hosted on Databricks.
+- **Delta tables** — every run/answer/cave-in is also logged to Delta
+  tables in Databricks for analytics (`backend/api/storage.py`), with
+  dashboard queries in `notebooks/dashboard_queries.sql`.
+
+## Setup
 
 ```bash
-python3 -m pip install -r backend/requirements.txt
-echo "FAKE_LLM=1" > .env      # canned content, no model calls (see API.md)
-cd frontend && npm install    # requires Node 22 (see frontend/.nvmrc)
+git clone <repo-url>
+cd Rabbit_Hole
+
+python3 -m venv .venv
+source .venv/bin/activate   # <-- don't skip this; forgetting it is the
+                             #     most common way this setup breaks
+pip install -r backend/requirements.txt
+
+cp .env.example .env
+# edit .env and fill in DATABRICKS_TOKEN (everything else is prefilled)
 ```
 
-**Terminal 1: backend (port 8000)**
+**Run the backend** (from the repo root, with `.venv` active):
 
 ```bash
-python3 -m uvicorn backend.api.main:app --reload --port 8000
+uvicorn backend.api.main:app --reload --port 8000
 ```
 
-**Terminal 2: frontend (port 5173, proxies `/runs` to the backend)**
+**Run the frontend** (separate terminal):
 
 ```bash
 cd frontend
+npm install   # requires Node 22, see frontend/.nvmrc
 npm run dev
 ```
 
-Then open http://localhost:5173. With `FAKE_LLM=1`, the correct option is always the one labelled "Right answer".
+Open http://localhost:5173. (See `frontend/PLAN.md` for frontend architecture.)
 
-## Frontend
+By default `.env` has `FAKE_LLM=0`, so the backend makes real model calls.
+Set `FAKE_LLM=1` instead for canned, instant content with no model calls —
+useful for frontend work. See `API.md` for the full endpoint reference.
 
-- `npm test`: unit tests for the game state, chat transcript, share text and tunnel-map layout.
-- `npm run lint` / `npm run build`.
-- **Fake latency:** to design loading states, create `frontend/.env.local` containing `VITE_FAKE_DELAY_MS=2000` and restart `npm run dev`.
-- **New files and the dev server:** if you add a new CSS file while `npm run dev` is running and the page goes blank with a "no such file" error, restart the dev server. Vite caches directory listings.
-
-**Controls:** keys 1–4 pick an answer, 1–3 pick a tunnel, Space (or a click) finishes the bunny's typing, and Escape cancels "Surface".
-
-**Where things live** (see `frontend/PLAN.md` for the design):
-
-| Path | What |
-|---|---|
-| `src/useGame.js`, `src/gameReducer.js` | All game state; the only code that calls `api.js` |
-| `src/chat/` | The bunny chat: transcript builder, messages, answer chips, tunnel picker |
-| `src/scene/` | The world behind the UI (sky, strata, camera) and all pixel sprites |
-| `src/screens/` | Start (lives in the sky), run, and end screens |
-| `src/hud/`, `src/end/` | Top bar and depth gauge; artifact shelf and tunnel map |
-| `src/lib/lines.js` | Everything the bunny says that isn't generated |
-
-Note: the backend stores runs in memory, so a backend restart loses all runs. The UI then says the run was lost and returns to the start screen.
+Note: the backend stores runs in memory, so restarting it loses all runs
+in progress.
