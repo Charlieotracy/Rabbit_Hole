@@ -6,6 +6,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from . import storage
+
 app = FastAPI()
 
 app.add_middleware(
@@ -16,6 +18,11 @@ app.add_middleware(
 )
 
 RUNS: Dict[str, dict] = {}
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    storage.init_tables()
 
 
 class RunRequest(BaseModel):
@@ -80,6 +87,7 @@ def create_run(body: RunRequest):
         "cleared_node_ids": set(),
         "next_node_num": 2,
     }
+    storage.record_run_start(run_id, body.topic)
     return {
         "run_id": run_id,
         "depth": 1,
@@ -103,9 +111,16 @@ def answer_run(run_id: str, body: AnswerRequest):
         run["artifacts"].append(artifact)
         tunnels = [f"{node['topic']}: tunnel {i + 1}" for i in range(3)]
         run["tunnels"] = tunnels
+        storage.record_answer(
+            run_id, node["id"], node["topic"], node["depth"], body.option_index, True
+        )
         return {"correct": True, "artifact": artifact, "tunnels": tunnels}
 
     node["cave_ins"] += 1
+    storage.record_answer(
+        run_id, node["id"], node["topic"], node["depth"], body.option_index, False
+    )
+    storage.record_cave_in(run_id, node["id"], node["topic"], node["depth"], node["cave_ins"])
     new_turn = _new_turn(node["topic"])
     run["turn"] = new_turn
     return {"correct": False, "cave_in": _public_turn(new_turn)}
@@ -164,6 +179,8 @@ def get_run(run_id: str):
         for node_id in run["cleared_node_ids"]
         if nodes[node_id]["cave_ins"] == 0
     )
+
+    storage.record_run_end(run_id, run["depth"], first_try_count)
 
     return {
         "topic": run["topic"],
