@@ -153,6 +153,8 @@ Run this as a sequence:
 
 ## 7. Backend notes: two APIs exist
 
+> **For now, ignore `backend/LLM/`.** All milestones build against the placeholder API in `backend/api/main.py`. Come back to this section only when it's time to switch to the real LLM service.
+
 **`backend/api/main.py`** is the stub API. The frontend calls it today and the contract in section 0 describes it.
 
 **`backend/LLM/app.py`** is the real LLM service, and it has a **different contract**:
