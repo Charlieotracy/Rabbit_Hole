@@ -245,17 +245,41 @@ def difficulty_for(depth):
             return text
 
 
+# What a layer's explanation covers. The first layer is a broad overview of the
+# whole topic; every layer after it zooms in on one specific part.
+FOCUS_OVERVIEW = """Focus: OVERVIEW. This is the first layer, so give a basic summary of
+{topic} as a whole: what it is, the one or two big ideas behind it, and why it
+matters. Do not zoom in on one detail yet.
+- Question: check the player got the big picture (what the topic is or its main
+  idea), not a specific fact.
+- Tunnels: three main parts or branches of {topic}, each a clear step more
+  specific than this overview."""
+
+FOCUS_ZOOM = """Focus: ZOOM IN. {topic} is a more specific part of {parent}.
+Teach ONE specific idea about {topic}; do not summarize {parent} again or give
+a general overview.
+- Tunnels: three narrower parts of {topic}, each more specific than this layer."""
+
+
+def focus_for(topic, path, depth):
+    if depth <= 1 or not path:
+        return FOCUS_OVERVIEW.format(topic=topic)
+    return FOCUS_ZOOM.format(topic=topic, parent=path[-1])
+
+
 LAYER_PROMPT = """The player is digging into: {root}
 Path so far: {path}
 Next layer topic: {topic}
 Depth: {depth} (1 is the surface; deeper layers must be harder)
 Already covered, do not repeat: {covered}
 
+{focus}
+
 {difficulty}
 
 Write this layer as JSON with exactly these fields:
 {{
-  "explanation": "at most 100 words that teach ONE idea about the topic",
+  "explanation": "at most 100 words, following the Focus above",
   "question": {{
     "text": "one question that checks the idea",
     "options": ["four", "answer", "choices", "here"],
@@ -287,6 +311,7 @@ def generate_layer(topic, path, depth):
         topic=topic,
         depth=depth,
         covered=", ".join(path) if path else "nothing yet",
+        focus=focus_for(topic, path, depth),
         difficulty=difficulty_for(depth),
         icons=json.dumps(ICONS),
     )
