@@ -28,9 +28,10 @@ ICONS = ["fossil", "scroll", "gear", "telescope", "flask", "book",
 SYSTEM = (
     "You write content for Rabbit Hole, a learning game where players dig into a "
     "topic one layer at a time and must answer a question to go deeper. "
-    "The player starts as a curious beginner and gets more advanced as they dig: "
-    "always use plain words, one idea at a time, and no jargon without explaining "
-    "it, but follow the difficulty asked for at each depth. Reply with a single JSON object and nothing else."
+    "The level rises as the player digs: it starts at middle school and ends at "
+    "college. Follow the level asked for at each depth. At every level, teach one "
+    "idea at a time and explain any term the player has not met yet. "
+    "Reply with a single JSON object and nothing else."
 )
 
 
@@ -194,21 +195,27 @@ QUESTION_RULES = """Question rules:
 # subject. No curly braces in here (pasted into str.format() templates).
 DIFFICULTY_TIERS = [
     # (deepest depth this tier covers, description)
-    (2, """Difficulty: SURFACE (depth 1-2).
+    (2, """Difficulty: SURFACE (depth 1-2). Level: MIDDLE SCHOOL (ages 11-14).
+- Language: short sentences and everyday words. Assume no background beyond
+  what a middle schooler knows; explain every technical term.
 - Explanation: introduce the idea in everyday words with one simple example.
 - Question type: check the player understood the core idea. Describe a simple,
   new example (not the one in the explanation) and ask what it shows, or ask
   which statement correctly describes the idea.
 - Wrong options: common beginner misconceptions. A careful reader rules them
   out quickly."""),
-    (4, """Difficulty: SHALLOW (depth 3-4).
+    (4, """Difficulty: SHALLOW (depth 3-4). Level: HIGH SCHOOL.
+- Language: what a good high school class would use. Basic subject terms are
+  fine once introduced; simple numbers or cause-and-effect chains are expected.
 - Explanation: go past the basics; name the mechanism or the rule behind the
   idea, not just what happens.
 - Question type: apply the idea. Give a short scenario the explanation did not
   mention and ask the player to predict what happens or choose what to do.
 - Wrong options: near misses that would be right if one detail of the rule
   were different."""),
-    (6, """Difficulty: DEEP (depth 5-6).
+    (6, """Difficulty: DEEP (depth 5-6). Level: INTRO COLLEGE (first-year course).
+- Language: proper subject vocabulary, used precisely. Assume the player
+  remembers the earlier layers on their path; define new terms briefly.
 - Explanation: cover the reason why, including a limit, exception, or
   condition where the idea stops working.
 - Question type: reason about cause, condition, or exception. Ask why something
@@ -217,7 +224,9 @@ DIFFICULTY_TIERS = [
 - Wrong options: all sound expert. Each is a real, related effect or a correct
   statement about a neighboring idea, so only someone who grasped the exact
   reason can pick the right one."""),
-    (None, """Difficulty: CORE (depth 7 and below).
+    (None, """Difficulty: CORE (depth 7 and below). Level: COLLEGE (upper-level course).
+- Language: the precise terms and distinctions a college course in this
+  subject would use. Still define anything not covered earlier on the path.
 - Explanation: treat the player as a strong learner; give the precise version
   of the idea, including how it connects to an earlier topic on their path.
   Include every fact the question needs, so it is still answerable from this
