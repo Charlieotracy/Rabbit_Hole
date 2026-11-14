@@ -2,4 +2,5 @@
 @import './styles/base.css';
 @import './ui/ui.css';
 @import './scene/sprites/sprites.css';
+@import './scene/scene.css';
 @import './styles/screens.css';

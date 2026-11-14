@@ -1,18 +1,10 @@
 /* ---------- Bubble ---------- */
-/* Stepped corners: an outer frame (outline colour) and an inner body (fill),
+/* Rounded pixel corners (polygon set inline by Bubble.jsx as --notch): an outer frame (outline colour) and an inner body (fill),
    both clipped to the same stepped polygon. The hard shadow is a
    drop-shadow on the wrapper so it follows the clipped shape and the tail. */
 .bubble {
-  --n: calc(var(--px) * 2);
   --bubble-line: var(--ink);
   --bubble-fill: var(--cream);
-  --notch: polygon(
-    0 var(--n), var(--n) var(--n), var(--n) 0,
-    calc(100% - var(--n)) 0, calc(100% - var(--n)) var(--n), 100% var(--n),
-    100% calc(100% - var(--n)), calc(100% - var(--n)) calc(100% - var(--n)),
-    calc(100% - var(--n)) 100%, var(--n) 100%,
-    var(--n) calc(100% - var(--n)), 0 calc(100% - var(--n))
-  );
   position: relative;
   color: var(--ink);
   filter: drop-shadow(0 6px 0 rgba(43, 29, 20, 0.22));
@@ -30,7 +22,7 @@
 }
 
 .bubble__body {
-  padding: 20px 24px;
+  padding: 22px 28px;
   background: var(--bubble-fill);
   clip-path: var(--notch);
 }
@@ -169,23 +161,6 @@
   white-space: nowrap;
   color: var(--ink);
   text-shadow: 0.06em 0.06em 0 var(--grass-dark);
-}
-
-/* Tufted letters are inline-blocks with line-height 1, so the tuft can sit on
-   the cap line (about 0.17em below the box top in Pixelify Sans). */
-.title__letter {
-  position: relative;
-  display: inline-block;
-  line-height: 1;
-}
-
-.title__tuft {
-  position: absolute;
-  top: 0.03em;
-  left: 50%;
-  width: 0.45em;
-  height: auto;
-  transform: translateX(-50%);
 }
 
 .title__tagline {

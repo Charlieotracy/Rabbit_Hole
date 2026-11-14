@@ -1,10 +1,18 @@
+import { steppedCorners } from '../scene/sprites/generate'
 import { mirror, pixelRects, transpose } from '../scene/sprites/pixel'
 
-// Speech bubble: cream fill, ink outline with stepped pixel corners, hard shadow.
+// Speech bubble: cream fill, ink outline with rounded pixel corners, hard shadow.
 //
 // variant: "bunny" (default) | "player" | "cave" | "artifact" | "plain"
 // tail:    "none" (default) | "down" | "left" | "right"
+// round:   "lg" (pixel-circle corners, default for speech) | "sm" (small, for the HUD)
 // label:   optional small heading inside, e.g. "LAYER 2 · EVENT HORIZON"
+
+// Corner shapes: how far each row from the top is inset, in --px units.
+const CORNERS = {
+  lg: steppedCorners([9, 6, 5, 4, 3, 2, 1, 1, 1]),
+  sm: steppedCorners([3, 2, 1]),
+}
 
 // Tail drawn pointing down-left. Row 0 overlaps the bubble's bottom outline
 // so the fill runs straight into the tail. L = outline, F = fill.
@@ -40,14 +48,20 @@ function Tail({ side }) {
 export default function Bubble({
   variant = 'bunny',
   tail = 'none',
+  round = variant === 'plain' ? 'sm' : 'lg',
   label,
   className = '',
+  style,
   as: Tag = 'section',
   children,
   ...rest
 }) {
   return (
-    <Tag className={`bubble bubble--${variant} ${className}`} {...rest}>
+    <Tag
+      className={`bubble bubble--${variant} bubble--round-${round} ${className}`}
+      style={{ '--notch': CORNERS[round], ...style }}
+      {...rest}
+    >
       <div className="bubble__frame">
         <div className="bubble__body">
           {label && <p className="bubble__label">{label}</p>}

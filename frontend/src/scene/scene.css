@@ -1,0 +1,117 @@
+/* Surface scenery: sits behind the UI, covers the sky down to the grass. */
+.scenery {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--horizon);
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ---------- Sun ---------- */
+.scenery__sun {
+  position: absolute;
+  top: 18px;
+  right: max(16px, calc(50% - 600px));
+}
+
+.sun__rays--b { opacity: 0; }
+.sun__rays--a { animation: sun-twinkle 1.6s steps(1, end) infinite; }
+.sun__rays--b { animation: sun-twinkle-alt 1.6s steps(1, end) infinite; }
+
+@keyframes sun-twinkle {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes sun-twinkle-alt {
+  0% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+/* ---------- Clouds: drift left to right, looping ---------- */
+.scenery__cloud {
+  position: absolute;
+  left: 0;
+  animation: cloud-drift linear infinite;
+}
+
+.scenery__cloud--1 { top: 70px; animation-duration: 140s; animation-delay: -30s; }
+.scenery__cloud--2 { top: 175px; animation-duration: 190s; animation-delay: -120s; opacity: 0.9; }
+.scenery__cloud--3 { top: 250px; animation-duration: 240s; animation-delay: -75s; }
+
+@keyframes cloud-drift {
+  from { transform: translateX(-260px); }
+  to { transform: translateX(100vw); }
+}
+
+/* ---------- Birds: the flock crosses now and then, each bird flaps ---------- */
+.scenery__flock {
+  position: absolute;
+  top: 130px;
+  left: 0;
+  width: 90px;
+  height: 40px;
+  animation: flock-fly 34s linear infinite;
+  animation-delay: -6s;
+}
+
+.scenery__bird { position: absolute; }
+
+.bird__down { opacity: 0; }
+.bird__up { animation: bird-flap 0.5s steps(1, end) infinite; }
+.bird__down { animation: bird-flap-alt 0.5s steps(1, end) infinite; }
+.scenery__bird:nth-child(2) g { animation-delay: -0.15s; }
+.scenery__bird:nth-child(3) g { animation-delay: -0.32s; }
+
+@keyframes bird-flap {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes bird-flap-alt {
+  0% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+@keyframes flock-fly {
+  0% { transform: translate(-120px, 0); }
+  25% { transform: translate(25vw, -14px); }
+  50% { transform: translate(50vw, 4px); }
+  75% { transform: translate(75vw, -10px); }
+  100% { transform: translate(calc(100vw + 40px), 0); }
+}
+
+/* ---------- Trees: stand on the grass either side of the bunny ---------- */
+.scenery__tree {
+  position: absolute;
+  bottom: 2px;
+}
+
+.scenery__tree--left { left: max(-40px, calc(50% - 250px)); }
+.scenery__tree--right { left: min(calc(100% - 52px), calc(50% + 150px)); }
+
+/* ---------- Phones: smaller sun tucked in the corner, clear of the title ---------- */
+@media (max-width: 640px) {
+  .scenery__sun {
+    top: 4px;
+    right: 4px;
+    width: 60px;
+    height: 60px;
+  }
+}
+
+/* ---------- Reduced motion: hold everything still ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .scenery *,
+  .scenery * g {
+    animation: none !important;
+  }
+
+  .scenery__cloud--1 { left: 6%; }
+  .scenery__cloud--2 { left: 60%; }
+  .scenery__cloud--3 { left: 30%; }
+  .scenery__flock { left: 20%; }
+}

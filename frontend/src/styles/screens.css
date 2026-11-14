@@ -1,5 +1,7 @@
 /* Page layout and per-screen styles. */
 .app {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -98,16 +100,22 @@
   margin-right: 2px;
 }
 
+/* Bunny centred under the bubble's tail, burrow just to its right. */
 .start__ground {
+  position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 14px;
+  justify-content: center;
   width: min(620px, 100%);
   margin-top: 44px;
-  padding-left: 28px;
 }
 
-.start__burrow { margin-bottom: -6px; }
+.start__burrow {
+  position: absolute;
+  bottom: -6px;
+  left: calc(50% + 58px);
+}
+
+.start__bubble .bubble__tail--down { left: calc(50% - 14px); }
 
 @media (max-width: 640px) {
   :root { --horizon: 660px; }

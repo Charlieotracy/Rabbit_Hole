@@ -39,14 +39,3 @@ const BURROW_PALETTE = {
 export function Burrow({ scale = 4, className = '' }) {
   return <PixelSprite rows={BURROW} palette={BURROW_PALETTE} scale={scale} className={className} />
 }
-
-const TUFT = [
-  '..g...g.',
-  '.gG..gG.',
-  'gGGggGGg',
-]
-const TUFT_PALETTE = { g: 'var(--grass-dark)', G: 'var(--grass)' }
-
-export function GrassTuft({ scale = 3, className = '', style }) {
-  return <PixelSprite rows={TUFT} palette={TUFT_PALETTE} scale={scale} className={className} style={style} />
-}
