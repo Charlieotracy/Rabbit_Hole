@@ -1,4 +1,0 @@
-uvicorn
-databricks-sdk
-openai
-fastapi==0.128.8
