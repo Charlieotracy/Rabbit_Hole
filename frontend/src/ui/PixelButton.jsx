@@ -1,10 +1,11 @@
-// Button in the Krillion style.
+// Chunky "pressable" pixel key: ink outline and a hard bottom shadow that
+// compresses when pressed.
 //
-// variant: "primary" (cyan border, dark fill) | "danger" (pink fill)
-//          | "ghost" (quiet, for HUD) | "option" (left-aligned answer choice)
-// size:    "sm" | "md" | "lg" (lg fills the width, like BEGIN DESCENT)
+// variant: "primary" (carrot) | "secondary" (cream) | "reply" (chat quick-reply chip)
+//          | "ghost" (quiet, for the HUD)
+// size:    "sm" | "md" | "lg" (lg fills the width)
 export default function PixelButton({
-  variant = 'primary',
+  variant = 'secondary',
   size = 'md',
   type = 'button',
   className = '',

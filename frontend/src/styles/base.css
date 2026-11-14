@@ -11,13 +11,13 @@ body {
 }
 
 body {
-  font-family: var(--font-mono);
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: 17px;
   line-height: 1.55;
-  color: var(--text);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
   /* Placeholder backdrop: sky, grass line, then soil getting darker.
-     Milestone 2 replaces this with the World scene and camera. */
+     Milestone 3 replaces this with the World scene and camera. */
   background-color: var(--bedrock);
   background-image: linear-gradient(
     to bottom,
@@ -28,10 +28,10 @@ body {
     var(--grass-dark) var(--horizon),
     var(--grass-dark) calc(var(--horizon) + 8px),
     var(--soil-1) calc(var(--horizon) + 8px),
-    var(--soil-2) 70vh,
-    var(--soil-3) 100vh,
-    var(--rock) 140vh,
-    var(--bedrock) 200vh
+    var(--soil-2) calc(var(--horizon) + 40vh),
+    var(--soil-3) calc(var(--horizon) + 80vh),
+    var(--rock) calc(var(--horizon) + 120vh),
+    var(--bedrock) calc(var(--horizon) + 180vh)
   );
   background-repeat: no-repeat;
 }
@@ -43,7 +43,7 @@ input {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 3px solid var(--carrot);
   outline-offset: 3px;
 }
 
@@ -59,23 +59,9 @@ input {
   border: 0;
 }
 
-/* Text input in the Krillion style: dark well, cyan border. */
-.pixel-input {
-  width: 100%;
-  padding: 0.85em 1em;
-  background: var(--panel-edge);
-  border: var(--border) solid var(--accent);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 1.1rem;
-  border-radius: 0;
-}
-
-.pixel-input::placeholder {
-  color: var(--text-dim);
-}
-
-.pixel-input:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 1px var(--panel-edge), 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
+/* Pixel sprites: keep edges hard when scaled. */
+.sprite {
+  display: block;
+  shape-rendering: crispEdges;
+  image-rendering: pixelated;
 }

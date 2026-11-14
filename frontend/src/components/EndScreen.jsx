@@ -1,5 +1,5 @@
 import { buildTree } from '../buildTree'
-import Panel from '../ui/Panel'
+import Bubble from '../ui/Bubble'
 import PixelButton from '../ui/PixelButton'
 import Title from '../ui/Title'
 
@@ -27,7 +27,7 @@ export default function EndScreen({ summary, onReset }) {
   return (
     <>
       <Title tagline="Surfaced" subline={summary.topic} />
-      <Panel label="Run complete">
+      <Bubble label="Run complete">
         <dl className="stats">
           <div>
             <dt>Depth</dt>
@@ -44,9 +44,9 @@ export default function EndScreen({ summary, onReset }) {
             </dd>
           </div>
         </dl>
-      </Panel>
+      </Bubble>
 
-      <Panel tone="gold" label="Artifacts">
+      <Bubble variant="artifact" label="Artifacts">
         {summary.artifacts.length === 0 ? (
           <p className="dim">None yet. Clear a layer to unearth one.</p>
         ) : (
@@ -58,18 +58,18 @@ export default function EndScreen({ summary, onReset }) {
             ))}
           </ul>
         )}
-      </Panel>
+      </Bubble>
 
-      <Panel label="Your tunnel">
+      <Bubble label="Your tunnel">
         <ul className="tree tree--root">
           {tree.map((root) => (
             <TreeNode key={root.id} node={root} />
           ))}
         </ul>
-      </Panel>
+      </Bubble>
 
-      <PixelButton size="lg" onClick={onReset}>
-        ▼ Dig again ▼
+      <PixelButton variant="primary" size="lg" onClick={onReset}>
+        Dig again ⛏
       </PixelButton>
     </>
   )

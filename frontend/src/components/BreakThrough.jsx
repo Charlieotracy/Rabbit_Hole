@@ -1,23 +1,24 @@
-import Panel from '../ui/Panel'
+import Bubble from '../ui/Bubble'
 import PixelButton from '../ui/PixelButton'
 
+// Milestone 7 adds the dig animation, artifact icons and tunnel arches.
 export default function BreakThrough({ artifact, tunnels, onChoose, disabled }) {
   return (
     <div className="stack">
-      <Panel tone="gold" tag="Unearthed" label="Break-through!">
+      <Bubble variant="artifact" label="You broke through! You unearthed:">
         <p className="artifact-name">{artifact.name}</p>
         <p className="dim">Found at layer {artifact.depth}</p>
-      </Panel>
-      <Panel label="Pick a tunnel">
-        <div className="options">
+      </Bubble>
+      <Bubble label="Three tunnels from here. Which one?">
+        <div className="options options--single">
           {tunnels.map((tunnel, i) => (
-            <PixelButton key={i} variant="option" onClick={() => onChoose(i)} disabled={disabled}>
+            <PixelButton key={i} variant="reply" onClick={() => onChoose(i)} disabled={disabled}>
               <span className="pbtn__key">{i + 1}</span>
               {tunnel}
             </PixelButton>
           ))}
         </div>
-      </Panel>
+      </Bubble>
     </div>
   )
 }

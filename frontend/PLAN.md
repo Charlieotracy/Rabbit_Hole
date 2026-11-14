@@ -147,7 +147,7 @@ src/
 - The bubble's input area contains:
   - a text input in a cream-shade well with an ink outline (placeholder `type any topic…`);
   - a **carrot send button**: a pixel carrot icon in a carrot-coloured key, with the accessible name "Send". Enter also sends.
-- Under the bubble are 3 or 4 **suggestion chips** that work as quick replies, e.g. "black holes", "the Roman Empire", "jazz" and "how volcanoes work". Clicking one sends it straight away.
+- At the bottom of the bubble are 3 or 4 **suggestion chips** that work as quick replies, e.g. "black holes", "the Roman Empire", "jazz" and "how volcanoes work". Clicking one sends it straight away.
 - After sending:
   1. The topic appears as a player bubble.
   2. The bunny answers *"Ooh, black holes. Let's dig!"* and switches to the `dig` animation, with the typing indicator showing while `POST /runs` runs.
@@ -206,7 +206,7 @@ src/
 ## 6. Milestones (do in order, verify each in the browser, one commit each)
 
 1. ✅ **Foundation** (done). This milestone delivered tokens, base CSS, the Panel, PixelButton and Title components, and the restyled test page.
-2. **1b. Re-skin and bunny.**
+2. ✅ **1b. Re-skin and bunny** (done).
    - Add the warm palette tokens, swap the fonts to Pixelify Sans and Nunito, and **remove the CRT overlay**.
    - Rebuild the Title, the Bubble component (replacing Panel) and PixelButton's pressable style.
    - Draw the Bunny sprite with `idle` and `talk`.

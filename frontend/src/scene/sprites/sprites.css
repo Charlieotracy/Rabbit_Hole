@@ -1,0 +1,40 @@
+/* ---------- Bunny ---------- */
+.bunny {
+  animation: bunny-bob 1.6s steps(1, end) infinite;
+}
+
+.bunny__blink {
+  opacity: 0;
+  animation: bunny-blink 4.5s steps(1, end) infinite;
+}
+
+.bunny__mouth { opacity: 0; }
+
+.bunny--talking .bunny__mouth {
+  animation: bunny-talk 0.26s steps(1, end) infinite;
+}
+
+/* One art pixel up and down. The SVG scale is set by its width, so move by
+   a percentage of the sprite height (1/29 ≈ 3.45%). */
+@keyframes bunny-bob {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-3.45%); }
+}
+
+@keyframes bunny-blink {
+  0% { opacity: 0; }
+  93% { opacity: 1; }
+  97% { opacity: 0; }
+}
+
+@keyframes bunny-talk {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bunny,
+  .bunny--talking .bunny__mouth {
+    animation: none;
+  }
+}

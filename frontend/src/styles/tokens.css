@@ -1,12 +1,10 @@
 /* Design tokens. Every colour, font and pixel unit lives here. */
 :root {
-  /* Sky and surface */
+  /* World */
   --sky-top: #bfe3f2;
   --sky-bottom: #eef7fb;
   --grass: #5fae4e;
   --grass-dark: #3d7f35;
-
-  /* Strata, top to bottom */
   --soil-1: #6b4a2f;
   --soil-2: #523621;
   --soil-3: #3b2718;
@@ -15,24 +13,27 @@
   --core: #3a1420;
 
   /* UI */
-  --panel: #14161f;
-  --panel-edge: #0b0c12;
-  --accent: #5fd3ea; /* cyan glow: borders, focus */
-  --accent-ink: #2b8fa8; /* darker cyan for text on the light sky */
-  --danger: #ef6b86; /* pink: cave-in, labels, flag */
+  --cream: #fff4dc; /* bubbles */
+  --cream-shade: #f1e2bf; /* inputs, pressed states */
+  --ink: #2b1d14; /* outlines and text */
+  --ink-soft: #6b5443; /* secondary text */
+  --carrot: #f08a24; /* primary accent: send, focus, selected */
+  --carrot-light: #f7a24c;
+  --carrot-dark: #b85f12;
+  --leaf: #4f9a3f; /* correct, success */
+  --berry: #c9473f; /* cave-in */
   --gold: #f2c25c; /* artifacts */
-  --text: #e9ecf2;
-  --text-dim: #8a90a3;
-  --text-on-sky: #5d6f82;
+  --fur: #fbf3e4; /* bunny */
+  --fur-shade: #e3d3bb;
+  --blush: #f2a7b0;
 
   /* Type */
-  --font-display: 'Silkscreen', ui-monospace, monospace;
-  --font-mono: 'Space Mono', ui-monospace, monospace;
+  --font-display: 'Pixelify Sans', system-ui, sans-serif; /* title, labels, buttons */
+  --font-body: 'Nunito', system-ui, sans-serif; /* bubble text */
 
-  /* Pixel unit for notches and borders */
+  /* Pixel unit for stepped corners, outlines and hard shadows */
   --px: 4px;
-  --border: 3px;
 
   /* Where the sky meets the grass (placeholder until the World scene lands) */
-  --horizon: 320px;
+  --horizon: 560px;
 }
