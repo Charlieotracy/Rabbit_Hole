@@ -10,6 +10,7 @@ only translates field names so the rest of the API never has to know them:
   cave_in() result       -> {layer, question, options, style}
 """
 
+import inspect
 import logging
 import sys
 import time
@@ -18,6 +19,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import RateLimitError
+
+from . import retrieval
 
 # backend/ locally, or the app's root when deployed as a Databricks App with
 # source code path "backend" (api/ and LLM/ become top-level siblings then,
@@ -48,9 +51,26 @@ PREFETCH_RETRY_BACKOFF_SECONDS = 1.5
 PREFETCH_MAX_ATTEMPTS = 3  # 1 try + 2 retries
 
 
+# Ruby is adding an optional `passages` argument to her generate_layer on
+# her own schedule; checked once at import time so every call site below
+# starts passing retrieved passages the moment it exists, with no further
+# changes needed here, and never breaks while it doesn't.
+_GENERATE_LAYER_TAKES_PASSAGES = "passages" in inspect.signature(llm.generate_layer).parameters
+
+
+def _call_generate_layer(topic: str, path: list, depth: int) -> dict:
+    passages = retrieval.retrieve(topic)
+    kwargs = {"topic": topic, "path": path, "depth": depth}
+    if _GENERATE_LAYER_TAKES_PASSAGES:
+        kwargs["passages"] = passages
+    return llm.generate_layer(**kwargs)
+
+
 def generate_layer(topic: str, path: list, depth: int) -> dict:
-    """Returns their raw layer dict (topic, depth, explanation, question, artifact, tunnels)."""
-    return llm.generate_layer(topic=topic, path=path, depth=depth)
+    """Returns their raw layer dict (topic, depth, explanation, question, artifact, tunnels).
+    Retrieves grounding passages for the topic and passes them through if
+    their generate_layer accepts a `passages` argument."""
+    return _call_generate_layer(topic, path, depth)
 
 
 def cave_in(layer: dict, chosen_index: int, attempt: int) -> dict:
@@ -62,7 +82,7 @@ def _prefetch_one(tunnel: str, path: list, depth: int, start_delay: float) -> di
     time.sleep(start_delay)
     for attempt in range(1, PREFETCH_MAX_ATTEMPTS + 1):
         try:
-            return llm.generate_layer(topic=tunnel, path=path, depth=depth)
+            return _call_generate_layer(tunnel, path, depth)
         except RateLimitError:
             if attempt == PREFETCH_MAX_ATTEMPTS:
                 logger.warning("prefetch for %r still rate-limited after %d tries", tunnel, attempt)

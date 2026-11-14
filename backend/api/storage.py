@@ -166,3 +166,26 @@ def record_cave_in(run_id: str, node_id: str, topic: str, depth: int, attempt: i
         """,
         {"run_id": run_id, "node_id": node_id, "topic": topic, "depth": depth, "attempt": attempt},
     )
+
+
+def record_wikipedia_passages(rows: list) -> None:
+    """Appends newly-fetched passages to wikipedia_passages (notebooks/load_corpus_to_delta.py's
+    table). Fire-and-forget like everything else here: the caller already has
+    these rows in hand, so this write doesn't gate the response. The Vector
+    Search index only picks these up on its next sync, not immediately."""
+    if not rows:
+        return
+    values_sql = ", ".join(
+        f"(:passage_text{i}, :article_title{i}, :article_url{i}, :source{i})" for i in range(len(rows))
+    )
+    params = {}
+    for i, row in enumerate(rows):
+        params[f"passage_text{i}"] = row["passage_text"]
+        params[f"article_title{i}"] = row["article_title"]
+        params[f"article_url{i}"] = row["article_url"]
+        params[f"source{i}"] = row["source"]
+    _execute(
+        f"INSERT INTO wikipedia_passages (passage_text, article_title, article_url, source) "
+        f"VALUES {values_sql}",
+        params,
+    )
