@@ -10,6 +10,7 @@ frontend person, and for testing the routes before the endpoint is ready).
 """
 
 import json
+import logging
 import os
 import random
 import re
@@ -18,6 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 MODEL = os.environ.get("MODEL_ENDPOINT", "MODEL_NAME_HERE")  # set once the reps confirm the model
 FAKE = os.environ.get("FAKE_LLM") == "1"
 MAX_TRIES = 3  # how many times to regenerate before giving up
+
+logger = logging.getLogger("rabbit_hole.llm")
 
 STYLES = ["analogy", "concrete example", "step by step"]
 
@@ -141,31 +144,160 @@ def shuffle_options(q):
     return q
 
 
-def passes_checker(explanation, q):
-    """Second model call: is there exactly one right answer, and can you get it
-    from the explanation alone? Returns True if the question is fair."""
-    options = "\n".join(f"{i}. {o}" for i, o in enumerate(q["options"]))
-    prompt = f"""Check this quiz question against the lesson it is based on.
+# ------------------------------------------------------------------ checker
+#
+# Every generated question goes through check_question() before the player
+# sees it. A rejection carries a reason, which is logged and fed back into the
+# next generation attempt so the retry can fix the actual problem.
+
+class Rejected(ValueError):
+    """The checker turned the question down; `reason` says why."""
+
+    def __init__(self, reason):
+        super().__init__(f"checker rejected the question: {reason}")
+        self.reason = reason
+
+
+class CheckerError(Exception):
+    """The checker's own reply was unusable. Not the question's fault, so
+    nothing is fed back, but the question is still not trusted."""
+
+
+# The blind check only runs from this depth down. At the surface, a big-picture
+# question a student could already answer is fine.
+BLIND_CHECK_FROM_DEPTH = 3
+
+LESSON_CHECK_PROMPT = """Check this quiz question against the lesson it is based on.
 
 Lesson:
 {explanation}
 
-Question: {q["text"]}
+Question: {question}
 Options:
 {options}
 
+Judge every option in order, using only the lesson. Give your reasoning for each
+option before its verdict:
+- "correct": the lesson shows this answers the question
+- "wrong": the lesson shows this does not answer the question
+- "arguable": a careful reader could reasonably defend it as correct, or the
+  lesson does not settle it
+
 Reply with JSON only:
-{{"answerable_from_lesson": true or false,
-  "number_of_correct_options": a number,
-  "correct_index": the number of the correct option,
-  "reason": "one short sentence"}}"""
+{{"options": [
+    {{"why": "reasoning from the lesson", "verdict": "correct" or "wrong" or "arguable"}},
+    ... one entry per option, in order (4 total)
+  ],
+  "answerable_from_lesson": true or false,
+  "problem": "one sentence on the main problem with this question, or empty if none"}}"""
+
+BLIND_CHECK_PROMPT = """A typical {level} student has NOT read the lesson. They see only this
+quiz question:
+
+Question: {question}
+Options:
+{options}
+
+Think about how that student would do. First reason it through, then give the
+verdict. Also look for wording that gives the answer away even to someone who
+knows nothing: one option longer, more specific, or more carefully hedged than
+the rest; the only option that fits the question's grammar; giveaway words; or
+three options that are obviously silly.
+
+Reply with JSON only:
+{{"reasoning": "how the student would approach it, and any wording clues",
+  "likely_pick": the number of the option they would most likely pick,
+  "confidence": "high" or "medium" or "low",
+  "wording_gives_it_away": true or false}}"""
+
+
+def _sentence(text):
+    """Checker text as a sentence that can be followed by another one."""
+    text = str(text or "").strip()
+    if text and text[-1] not in ".!?":
+        text += "."
+    return text
+
+
+def _join(*parts):
+    return " ".join(p for p in parts if p)
+
+
+def _options_text(q):
+    return "\n".join(f"{i}. {o}" for i, o in enumerate(q["options"]))
+
+
+def _ask_checker(prompt):
     try:
-        verdict = extract_json(ask_model(prompt, temperature=0))
-    except (ValueError, json.JSONDecodeError):
-        return False
-    return (verdict.get("answerable_from_lesson") is True
-            and verdict.get("number_of_correct_options") == 1
-            and verdict.get("correct_index") == q["answer_index"])
+        reply = extract_json(ask_model(prompt, temperature=0))
+    except (ValueError, json.JSONDecodeError) as e:
+        raise CheckerError(f"unreadable checker reply: {e}") from e
+    if not isinstance(reply, dict):
+        raise CheckerError("checker reply was not an object")
+    return reply
+
+
+def _lesson_check(explanation, q):
+    """One right answer, no arguable wrong ones, answerable from the lesson."""
+    reply = _ask_checker(LESSON_CHECK_PROMPT.format(
+        explanation=explanation, question=q["text"], options=_options_text(q)))
+    judged = reply.get("options")
+    if not (isinstance(judged, list) and len(judged) == 4
+            and all(isinstance(o, dict) for o in judged)):
+        raise CheckerError("checker did not judge all 4 options")
+
+    verdicts = [str(o.get("verdict", "")).strip().lower() for o in judged]
+    whys = [_sentence(o.get("why")) for o in judged]
+    problem = _sentence(reply.get("problem"))
+    options = q["options"]
+
+    if reply.get("answerable_from_lesson") is not True:
+        raise Rejected(_join("the question cannot be answered from the explanation alone.", problem))
+    for i, verdict in enumerate(verdicts):
+        if verdict == "arguable":
+            raise Rejected(_join(f'the wrong option "{options[i]}" could be argued to be correct:', whys[i]))
+    correct = [i for i, v in enumerate(verdicts) if v == "correct"]
+    if len(correct) != 1:
+        raise Rejected(_join(f"{len(correct)} options are correct; there must be exactly one.", problem))
+    if correct[0] != q["answer_index"]:
+        i = correct[0]
+        raise Rejected(_join(f'the option marked correct is "{options[q["answer_index"]]}", '
+                             f'but the explanation supports "{options[i]}":', whys[i]))
+
+
+def _blind_check(q, depth):
+    """Without the lesson, would the player get it anyway?"""
+    level = level_for(depth)
+    reply = _ask_checker(BLIND_CHECK_PROMPT.format(
+        level=level, question=q["text"], options=_options_text(q)))
+    reasoning = _sentence(reply.get("reasoning"))
+
+    if reply.get("wording_gives_it_away") is True:
+        raise Rejected(_join("the wording gives the answer away without reading the explanation:",
+                             reasoning,
+                             "Make all four options match in length, detail, and grammar."))
+    if (reply.get("likely_pick") == q["answer_index"]
+            and str(reply.get("confidence", "")).strip().lower() == "high"):
+        raise Rejected(_join(f"too easy: a {level} student who has not read the explanation "
+                             "would confidently pick the right answer.", reasoning,
+                             "Make the question depend on this layer's specific idea and make "
+                             "the wrong options closer."))
+
+
+def check_question(explanation, q, depth):
+    """Raise Rejected (with a reason) if the question is not fair or too easy,
+    or CheckerError if the checker itself failed. Returns None if it passes."""
+    _lesson_check(explanation, q)
+    if depth >= BLIND_CHECK_FROM_DEPTH:
+        _blind_check(q, depth)
+
+
+def with_feedback(prompt, feedback):
+    """Add the last attempt's problem to the prompt so the retry can fix it."""
+    if not feedback:
+        return prompt
+    return (prompt + "\n\nYour previous attempt was rejected: " + feedback
+            + "\nWrite a new version that fixes this problem.")
 
 
 # ----------------------------------------------------------------- the layer
@@ -194,8 +326,8 @@ QUESTION_RULES = """Question rules:
 # question, so going deeper changes what the player has to do, not just the
 # subject. No curly braces in here (pasted into str.format() templates).
 DIFFICULTY_TIERS = [
-    # (deepest depth this tier covers, description)
-    (2, """Difficulty: SURFACE (depth 1-2). Level: MIDDLE SCHOOL (ages 11-14).
+    # (deepest depth this tier covers, student level, description)
+    (2, "middle school", """Difficulty: SURFACE (depth 1-2). Level: MIDDLE SCHOOL (ages 11-14).
 - Language: short sentences and everyday words. Assume no background beyond
   what a middle schooler knows; explain every technical term.
 - Explanation: introduce the idea in everyday words with one simple example.
@@ -204,7 +336,7 @@ DIFFICULTY_TIERS = [
   which statement correctly describes the idea.
 - Wrong options: common beginner misconceptions. A careful reader rules them
   out quickly."""),
-    (4, """Difficulty: SHALLOW (depth 3-4). Level: HIGH SCHOOL.
+    (4, "high school", """Difficulty: SHALLOW (depth 3-4). Level: HIGH SCHOOL.
 - Language: what a good high school class would use. Basic subject terms are
   fine once introduced; simple numbers or cause-and-effect chains are expected.
 - Explanation: go past the basics; name the mechanism or the rule behind the
@@ -213,7 +345,7 @@ DIFFICULTY_TIERS = [
   mention and ask the player to predict what happens or choose what to do.
 - Wrong options: near misses that would be right if one detail of the rule
   were different."""),
-    (6, """Difficulty: DEEP (depth 5-6). Level: INTRO COLLEGE (first-year course).
+    (6, "first-year college", """Difficulty: DEEP (depth 5-6). Level: INTRO COLLEGE (first-year course).
 - Language: proper subject vocabulary, used precisely. Assume the player
   remembers the earlier layers on their path; define new terms briefly.
 - Explanation: cover the reason why, including a limit, exception, or
@@ -224,7 +356,7 @@ DIFFICULTY_TIERS = [
 - Wrong options: all sound expert. Each is a real, related effect or a correct
   statement about a neighboring idea, so only someone who grasped the exact
   reason can pick the right one."""),
-    (None, """Difficulty: CORE (depth 7 and below). Level: COLLEGE (upper-level course).
+    (None, "upper-level college", """Difficulty: CORE (depth 7 and below). Level: COLLEGE (upper-level course).
 - Language: the precise terms and distinctions a college course in this
   subject would use. Still define anything not covered earlier on the path.
 - Explanation: treat the player as a strong learner; give the precise version
@@ -239,10 +371,18 @@ DIFFICULTY_TIERS = [
 ]
 
 
+def _tier_for(depth):
+    for tier in DIFFICULTY_TIERS:
+        if tier[0] is None or depth <= tier[0]:
+            return tier
+
+
 def difficulty_for(depth):
-    for deepest, text in DIFFICULTY_TIERS:
-        if deepest is None or depth <= deepest:
-            return text
+    return _tier_for(depth)[2]
+
+
+def level_for(depth):
+    return _tier_for(depth)[1]
 
 
 # What a layer's explanation covers. The first layer is a broad overview of the
@@ -316,19 +456,24 @@ def generate_layer(topic, path, depth):
         icons=json.dumps(ICONS),
     )
 
-    last_error = None
-    for _ in range(MAX_TRIES):
+    last_error, feedback = None, None
+    for attempt in range(1, MAX_TRIES + 1):
         try:
-            layer = extract_json(ask_model(prompt))
+            layer = extract_json(ask_model(with_feedback(prompt, feedback)))
             validate_layer(layer)
-            if not passes_checker(layer["explanation"], layer["question"]):
-                raise ValueError("checker rejected the question")
+            check_question(layer["explanation"], layer["question"], depth)
             layer["depth"] = depth  # set by our code, not trusted from the model
             layer["topic"] = topic  # always the player's chosen topic, set by our code
             shuffle_options(layer["question"])
             return layer
+        except Rejected as e:
+            last_error, feedback = e, e.reason
+        except CheckerError as e:
+            last_error = e  # keep the previous feedback; this one isn't the question's fault
         except (ValueError, json.JSONDecodeError) as e:
-            last_error = e
+            last_error, feedback = e, f"the reply was not usable ({e})."
+        logger.warning("layer %r depth %d, try %d/%d failed: %s",
+                       topic, depth, attempt, MAX_TRIES, last_error)
     raise RuntimeError(f"Could not generate layer for {topic!r}: {last_error}")
 
 
@@ -392,19 +537,26 @@ def cave_in(layer, chosen_index, attempt):
         difficulty=difficulty_for(layer.get("depth", 1)),
     )
 
-    last_error = None
-    for _ in range(MAX_TRIES):
+    depth = layer.get("depth", 1)
+    last_error, feedback = None, None
+    for try_num in range(1, MAX_TRIES + 1):
         try:
-            result = extract_json(ask_model(prompt))
+            result = extract_json(ask_model(with_feedback(prompt, feedback)))
+            _require(isinstance(result, dict), "reply must be a JSON object")
             _validate_explanation(result.get("explanation"))
             _validate_question(result.get("question"))
-            if not passes_checker(result["explanation"], result["question"]):
-                raise ValueError("checker rejected the question")
+            check_question(result["explanation"], result["question"], depth)
             shuffle_options(result["question"])
             return {"explanation": result["explanation"], "style": style,
                     "question": result["question"]}
-        except (ValueError, json.JSONDecodeError) as e:
+        except Rejected as e:
+            last_error, feedback = e, e.reason
+        except CheckerError as e:
             last_error = e
+        except (ValueError, json.JSONDecodeError) as e:
+            last_error, feedback = e, f"the reply was not usable ({e})."
+        logger.warning("cave-in %r depth %d, try %d/%d failed: %s",
+                       layer["topic"], depth, try_num, MAX_TRIES, last_error)
     raise RuntimeError(f"Could not generate cave-in for {layer['topic']!r}: {last_error}")
 
 
