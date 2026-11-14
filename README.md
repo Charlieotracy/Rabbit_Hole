@@ -5,7 +5,7 @@ question to dig deeper. Get it wrong and the idea gets re-explained a
 different way (a "cave-in") before you try again. Dig as deep as you can
 and collect an artifact at each layer.
 
-**[ screenshot goes here ]**
+![Rabbit Hole](docs/coverScreen.png)
 
 ## Architecture
 
