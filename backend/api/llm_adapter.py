@@ -57,13 +57,26 @@ PREFETCH_MAX_ATTEMPTS = 3  # 1 try + 2 retries
 # changes needed here, and never breaks while it doesn't.
 _GENERATE_LAYER_TAKES_PASSAGES = "passages" in inspect.signature(llm.generate_layer).parameters
 
+# Retrieval runs in its own thread, started before generation. While her
+# generate_layer doesn't consume passages yet, there's no data dependency
+# between the two, so this overlaps the Vector Search query (and an
+# occasional live Wikipedia fetch on a miss) with generation instead of
+# paying for both back to back -- generation (several seconds) dominates
+# retrieval (well under a second on a hit), so this hides it almost
+# entirely. The moment passages is required as an input, the code below
+# blocks on this future before calling generate_layer, so it automatically
+# reverts to the correct sequential order with no further changes needed.
+_retrieval_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="retrieval")
+
 
 def _call_generate_layer(topic: str, path: list, depth: int) -> dict:
-    passages = retrieval.retrieve(topic)
-    kwargs = {"topic": topic, "path": path, "depth": depth}
-    if _GENERATE_LAYER_TAKES_PASSAGES:
-        kwargs["passages"] = passages
-    return llm.generate_layer(**kwargs)
+    retrieval_future = _retrieval_pool.submit(retrieval.retrieve, topic)
+
+    if not _GENERATE_LAYER_TAKES_PASSAGES:
+        return llm.generate_layer(topic=topic, path=path, depth=depth)
+
+    passages = retrieval_future.result()
+    return llm.generate_layer(topic=topic, path=path, depth=depth, passages=passages)
 
 
 def generate_layer(topic: str, path: list, depth: int) -> dict:

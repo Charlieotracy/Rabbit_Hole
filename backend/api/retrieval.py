@@ -60,28 +60,32 @@ _SECTION_HEADING_RE = re.compile(r"^=+\s*.+?\s*=+$")
 _session = requests.Session()
 _session.headers.update({"User-Agent": USER_AGENT})
 
-_vs_client = None
+_vs_index = None
 
 
-def _get_vector_search_client():
-    global _vs_client
-    if _vs_client is None:
+def _get_vector_search_index():
+    """Cached for the life of the process: get_index() is its own network
+    round-trip (~0.6-0.8s cold), separate from similarity_search()'s own
+    (~0.2-0.8s) -- paying it on every call roughly doubled retrieval
+    latency on a hit for no benefit, since the index object never changes."""
+    global _vs_index
+    if _vs_index is None:
         from databricks.vector_search.client import VectorSearchClient
 
-        _vs_client = VectorSearchClient(
+        client = VectorSearchClient(
             workspace_url=f"https://{DATABRICKS_HOST}",
             personal_access_token=DATABRICKS_TOKEN,
             disable_notice=True,
         )
-    return _vs_client
+        _vs_index = client.get_index(VECTOR_SEARCH_ENDPOINT_NAME, INDEX_NAME)
+    return _vs_index
 
 
 def _query_vector_search(topic: str, k: int) -> list:
     """Returns rows of [passage_text, article_title, article_url, score],
     best match first; [] if the index couldn't be reached."""
     try:
-        client = _get_vector_search_client()
-        index = client.get_index(VECTOR_SEARCH_ENDPOINT_NAME, INDEX_NAME)
+        index = _get_vector_search_index()
         result = index.similarity_search(
             query_text=topic,
             columns=["passage_text", "article_title", "article_url"],
