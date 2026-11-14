@@ -74,7 +74,7 @@ def create_run(body: RunRequest):
         "question": raw_layer["question"],
     }
     RUNS[run_id] = {
-        "topic": body.topic,
+        "topic": raw_layer["topic"],
         "depth": 1,
         "tunnels": None,
         "pending_layers": {},
@@ -86,7 +86,7 @@ def create_run(body: RunRequest):
         "next_node_num": 2,
         "path": [raw_layer["topic"]],
     }
-    storage.record_run_start(run_id, body.topic)
+    storage.record_run_start(run_id, raw_layer["topic"])
     return {
         "run_id": run_id,
         "depth": 1,
