@@ -1,0 +1,23 @@
+# Secrets
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node (frontend)
+node_modules/
+dist/
+build/
+
+# Editor and OS
+.vscode/
+.DS_Store
+
+# Local Claude Code files
+CLAUDE.md
+CLAUDE.local.md
+.claude/
