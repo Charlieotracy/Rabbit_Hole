@@ -311,8 +311,17 @@ They chose: {chosen}
 Correct answer: {correct}
 
 Explain the SAME idea again using a different style: {style}.
+The style is only a way in. If you use an analogy or example, the explanation
+must also state the real idea plainly, in the topic's own terms.
+
 Then ask a NEW question on the same idea (not the same question reworded).
 The new question must be answerable from your new explanation alone.
+The question tests the concept, not your analogy or example:
+- The question and all four options are about {topic} itself, in its real
+  terms. Do not mention the analogy's or example's characters, objects, or
+  details, and do not ask what part of it stands for what.
+- Someone who understood the idea but skipped your analogy or example must
+  still be able to answer it.
 Keep the question at this layer's difficulty (the explanation can be clearer,
 but the question must not get easier):
 
