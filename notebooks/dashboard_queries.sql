@@ -10,10 +10,10 @@
 -- 1. Concepts ranked by cave-in count (which ideas people struggle with)
 -- Chart: horizontal bar chart, topic vs. cave_in_count, sorted descending.
 SELECT
-    topic,
+    LOWER(topic) AS topic,
     COUNT(*) AS cave_in_count
 FROM cave_ins
-GROUP BY topic
+GROUP BY LOWER(topic)
 ORDER BY cave_in_count DESC
 LIMIT 20;
 
@@ -59,9 +59,9 @@ ORDER BY max_depth;
 -- topic in `answers` counts each dug layer once, regardless of how many
 -- wrong attempts it took.
 SELECT
-    topic,
+    LOWER(topic) AS topic,
     COUNT(DISTINCT CONCAT(run_id, '-', node_id)) AS times_dug
 FROM answers
-GROUP BY topic
+GROUP BY LOWER(topic)
 ORDER BY times_dug DESC
 LIMIT 20;
