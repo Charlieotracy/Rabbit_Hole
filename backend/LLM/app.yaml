@@ -1,0 +1,4 @@
+command: ["python", "app.py"]
+env:
+  - name: GPT OSS 120B
+    value: "databricks-gpt-oss-120b"

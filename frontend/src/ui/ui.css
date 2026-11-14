@@ -1,0 +1,204 @@
+/* ---------- Bubble ---------- */
+/* Stepped corners: an outer frame (outline colour) and an inner body (fill),
+   both clipped to the same stepped polygon. The hard shadow is a
+   drop-shadow on the wrapper so it follows the clipped shape and the tail. */
+.bubble {
+  --n: calc(var(--px) * 2);
+  --bubble-line: var(--ink);
+  --bubble-fill: var(--cream);
+  --notch: polygon(
+    0 var(--n), var(--n) var(--n), var(--n) 0,
+    calc(100% - var(--n)) 0, calc(100% - var(--n)) var(--n), 100% var(--n),
+    100% calc(100% - var(--n)), calc(100% - var(--n)) calc(100% - var(--n)),
+    calc(100% - var(--n)) 100%, var(--n) 100%,
+    var(--n) calc(100% - var(--n)), 0 calc(100% - var(--n))
+  );
+  position: relative;
+  color: var(--ink);
+  filter: drop-shadow(0 6px 0 rgba(43, 29, 20, 0.22));
+}
+
+.bubble--player { --bubble-fill: #ffe2c2; }
+.bubble--cave { --bubble-line: var(--berry); }
+.bubble--plain { filter: drop-shadow(0 4px 0 rgba(43, 29, 20, 0.22)); }
+
+.bubble__frame {
+  padding: var(--px);
+  background: var(--bubble-line);
+  clip-path: var(--notch);
+  transition: background-color 0.25s ease;
+}
+
+.bubble__body {
+  padding: 20px 24px;
+  background: var(--bubble-fill);
+  clip-path: var(--notch);
+}
+
+.bubble--artifact .bubble__body {
+  box-shadow: inset 0 0 0 var(--px) var(--gold);
+}
+
+.bubble__body > :first-child { margin-top: 0; }
+.bubble__body > :last-child { margin-bottom: 0; }
+
+.bubble__label {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bubble--cave .bubble__label { color: var(--berry); }
+.bubble--artifact .bubble__label { color: var(--carrot-dark); }
+
+/* Tail: 10×9 art pixels at --px each. One row/column overlaps the outline. */
+.bubble__tail {
+  position: absolute;
+  width: calc(var(--px) * 10);
+  height: calc(var(--px) * 9);
+}
+
+.bubble__tail--down {
+  left: 56px;
+  bottom: calc(var(--px) * -8);
+}
+
+.bubble__tail--left,
+.bubble__tail--right {
+  top: 22px;
+  width: calc(var(--px) * 9);
+  height: calc(var(--px) * 10);
+}
+
+.bubble__tail--left { left: calc(var(--px) * -8); }
+.bubble__tail--right { right: calc(var(--px) * -8); }
+
+/* ---------- PixelButton ---------- */
+.pbtn {
+  --face: var(--cream);
+  --face-hover: #fffaf0;
+  --depth: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  margin-bottom: var(--depth);
+  padding: 0.55em 1.1em;
+  background: var(--face);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 0 var(--depth) 0 var(--ink);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.06s ease, box-shadow 0.06s ease, background-color 0.12s ease;
+}
+
+.pbtn:hover:not(:disabled) { background: var(--face-hover); }
+
+.pbtn:active:not(:disabled) {
+  transform: translateY(var(--depth));
+  box-shadow: 0 0 0 var(--ink);
+}
+
+.pbtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pbtn--primary {
+  --face: var(--carrot);
+  --face-hover: var(--carrot-light);
+}
+
+.pbtn--reply {
+  --depth: 3px;
+  justify-content: flex-start;
+  text-align: left;
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.pbtn--ghost {
+  --face: transparent;
+  --face-hover: rgba(255, 255, 255, 0.35);
+  --depth: 0px;
+  border-color: var(--ink-soft);
+  box-shadow: none;
+}
+
+.pbtn__key {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.7em;
+  height: 1.7em;
+  border: 2px solid var(--ink);
+  background: var(--cream-shade);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+}
+
+.pbtn--sm { padding: 0.35em 0.8em; font-size: 0.85rem; }
+.pbtn--lg { width: 100%; padding: 0.8em 1.2em; font-size: clamp(1.05rem, 3.5vw, 1.35rem); }
+
+/* ---------- Title ---------- */
+.title {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.title__logo {
+  position: relative;
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.3rem, 8vw, 4.5rem);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--ink);
+  text-shadow: 0.06em 0.06em 0 var(--grass-dark);
+}
+
+/* Tufted letters are inline-blocks with line-height 1, so the tuft can sit on
+   the cap line (about 0.17em below the box top in Pixelify Sans). */
+.title__letter {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+}
+
+.title__tuft {
+  position: absolute;
+  top: 0.03em;
+  left: 50%;
+  width: 0.45em;
+  height: auto;
+  transform: translateX(-50%);
+}
+
+.title__tagline {
+  margin: 0;
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: clamp(0.95rem, 2.6vw, 1.15rem);
+  font-weight: 500;
+  letter-spacing: 0.18em;
+}
+
+.title__subline {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: clamp(0.9rem, 2.2vw, 1rem);
+}

@@ -1,0 +1,39 @@
+/* Design tokens. Every colour, font and pixel unit lives here. */
+:root {
+  /* World */
+  --sky-top: #bfe3f2;
+  --sky-bottom: #eef7fb;
+  --grass: #5fae4e;
+  --grass-dark: #3d7f35;
+  --soil-1: #6b4a2f;
+  --soil-2: #523621;
+  --soil-3: #3b2718;
+  --rock: #2a2320;
+  --bedrock: #17131a;
+  --core: #3a1420;
+
+  /* UI */
+  --cream: #fff4dc; /* bubbles */
+  --cream-shade: #f1e2bf; /* inputs, pressed states */
+  --ink: #2b1d14; /* outlines and text */
+  --ink-soft: #6b5443; /* secondary text */
+  --carrot: #f08a24; /* primary accent: send, focus, selected */
+  --carrot-light: #f7a24c;
+  --carrot-dark: #b85f12;
+  --leaf: #4f9a3f; /* correct, success */
+  --berry: #c9473f; /* cave-in */
+  --gold: #f2c25c; /* artifacts */
+  --fur: #fbf3e4; /* bunny */
+  --fur-shade: #e3d3bb;
+  --blush: #f2a7b0;
+
+  /* Type */
+  --font-display: 'Pixelify Sans', system-ui, sans-serif; /* title, labels, buttons */
+  --font-body: 'Nunito', system-ui, sans-serif; /* bubble text */
+
+  /* Pixel unit for stepped corners, outlines and hard shadows */
+  --px: 4px;
+
+  /* Where the sky meets the grass (placeholder until the World scene lands) */
+  --horizon: 560px;
+}

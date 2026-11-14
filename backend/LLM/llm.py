@@ -220,6 +220,7 @@ def generate_layer(topic, path, depth):
             if not passes_checker(layer["explanation"], layer["question"]):
                 raise ValueError("checker rejected the question")
             layer["depth"] = depth  # set by our code, not trusted from the model
+            layer["topic"] = topic # use th ename the player chose, not the model's rename
             shuffle_options(layer["question"])
             return layer
         except (ValueError, json.JSONDecodeError) as e:
