@@ -4,10 +4,12 @@ import Stratum from './Stratum'
 // The whole game world as one tall column behind the UI: sky (with scenery
 // and whatever `children` live on the surface), the grass line, then one
 // screen-tall stratum per layer. Moving the camera is one CSS transform.
-export default function World({ camera, strata, viewport, children }) {
+// `delay` (ms) holds the camera while something plays first, like the bunny
+// digging down from the surface.
+export default function World({ camera, strata, viewport, delay = 0, children }) {
   return (
     <div className="world">
-      <div className="world__column" style={{ transform: `translate3d(0, ${-camera}px, 0)` }}>
+      <div className="world__column" style={{ transform: `translate3d(0, ${-camera}px, 0)`, transitionDelay: `${delay}ms` }}>
         <div className="world__sky" style={{ height: viewport.horizon }}>
           <Scenery />
           {children}

@@ -4,8 +4,8 @@
   grid-template-columns: 84px minmax(0, 1fr);
   gap: 14px;
   align-items: start;
-  /* Wait for the camera to finish most of its descent. */
-  animation: chat-in 0.55s ease 0.8s both;
+  /* Wait for the camera to finish most of its descent (set per layer). */
+  animation: chat-in 0.55s ease var(--enter-delay, 0.8s) both;
 }
 
 @keyframes chat-in {
@@ -74,6 +74,7 @@
 
 .msg__question {
   margin: 0;
+  white-space: pre-line;
   font-size: clamp(1.12rem, 3.2vw, 1.35rem);
   font-weight: 800;
   line-height: 1.35;
@@ -102,6 +103,10 @@
 }
 
 .msg--replies .pbtn { width: 100%; margin-bottom: 3px; }
+
+/* A single reply (like "Ready for a question?") sits compactly on the right. */
+.msg--replies:has(> .pbtn:only-child) { width: auto; }
+.msg--replies > .pbtn:only-child { width: auto; padding: 0.7em 1.4em; }
 
 /* ---------- Typing indicator ---------- */
 .typing .bubble__body {
@@ -133,91 +138,45 @@
   50% { transform: translateY(-6px); }
 }
 
-.typing__note {
-  color: var(--ink-soft);
-  font-family: var(--font-display);
-  font-size: 0.85rem;
-}
-
-/* ---------- Dig burst ---------- */
-.msg--dig {
-  position: relative;
-  align-self: center;
+/* ---------- Question with its options in one bubble ---------- */
+.options {
   display: grid;
-  place-items: center;
-  width: 100%;
-  height: 130px;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  animation: msg-in 0.22s ease-out backwards;
 }
 
-.msg--dig .particles {
-  left: 50%;
-  top: 70%;
-}
-
-.dig__label {
-  margin-top: 40px;
-  color: var(--cream);
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  font-weight: 700;
-  text-shadow: 0 3px 0 var(--ink);
-  animation: dig-shake 0.22s steps(2, end) infinite;
-}
-
-@keyframes dig-shake {
-  50% { transform: translateX(3px); }
-}
-
-/* ---------- Artifact ---------- */
-.msg--pop { animation: artifact-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) backwards; }
-
-@keyframes artifact-pop {
-  from { opacity: 0; transform: scale(0.85) translateY(10px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.artifact {
+.option {
   display: flex;
   align-items: center;
-  gap: 18px;
-}
-
-.artifact__icon {
-  position: relative;
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 88px;
-  height: 88px;
-  overflow: hidden;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
   background: var(--cream-shade);
   border: 3px solid var(--ink);
-}
-
-.artifact__glint {
-  position: absolute;
-  inset: -20%;
-  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.85) 50%, transparent 60%);
-  animation: glint 2.4s ease-in-out 0.4s infinite;
-}
-
-@keyframes glint {
-  0% { transform: translateX(-100%); }
-  45%, 100% { transform: translateX(100%); }
-}
-
-.artifact__name {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.2rem, 4vw, 1.6rem);
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font-family: var(--font-body);
   font-weight: 700;
-  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, transform 0.06s ease, box-shadow 0.06s ease;
 }
 
-.artifact__where {
-  margin: 4px 0 0;
-  color: var(--ink-soft);
+.option:hover:not(:disabled) { background: #ffe2c2; }
+
+.option:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: none;
 }
+
+.option:disabled { cursor: default; }
+.option--other { opacity: 0.5; }
+.option--picked { background: #ffe2c2; }
+.option--right { background: #e3f3d6; border-color: var(--leaf); }
+.option--wrong { background: #f8dcd8; border-color: var(--berry); }
 
 /* ---------- Tunnel picker: three tunnel mouths in the dirt ---------- */
 .msg--tunnels {
@@ -283,8 +242,6 @@
 @media (prefers-reduced-motion: reduce) {
   .chat,
   .msg,
-  .msg--pop { animation-duration: 0.01s; animation-delay: 0s; }
-  .typing__dots i,
-  .dig__label,
-  .artifact__glint { animation: none; }
+  .options { animation-duration: 0.01s; animation-delay: 0s; }
+  .typing__dots i { animation: none; }
 }

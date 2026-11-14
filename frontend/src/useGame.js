@@ -7,7 +7,8 @@ import { reducedMotion, sleep } from './lib/motion'
 // only this file (through api.js) talks to the backend. The state machine
 // itself is in gameReducer.js.
 
-const DIG_ANIMATION_MS = 1300
+// After a right answer: the bunny digs down (~1.3s), then a pause before the tunnels.
+const DIG_ANIMATION_MS = 2400
 
 // Runs an API call with a minimum duration, so quick responses still let the
 // digging animation read as digging instead of a flicker.
@@ -52,8 +53,12 @@ export function useGame() {
       dispatch({ type: 'start/ok', data })
     })
 
+  const readyForQuestion = () => {
+    if (current && !current.ready) dispatch({ type: 'question/ready' })
+  }
+
   const answer = (index) => {
-    if (!current || current.chosen !== null || state.breakthrough) return
+    if (!current || !current.ready || current.chosen !== null || state.breakthrough) return
     perform({ type: 'answer/pending', index }, async () => {
       const data = await atLeast(700, api.submitAnswer(runId, index))
       if (data.correct) dispatch({ type: 'answer/right', artifact: data.artifact, tunnels: data.tunnels })
@@ -64,7 +69,8 @@ export function useGame() {
   const chooseTunnel = (index) => {
     if (!state.breakthrough || state.breakthrough.chosen !== null) return
     perform({ type: 'dig/pending', index }, async () => {
-      const data = await atLeast(900, api.dig(runId, index))
+      // Long enough for the bunny to dig itself down before the camera moves.
+      const data = await atLeast(1400, api.dig(runId, index))
       dispatch({ type: 'dig/ok', data })
     })
   }
@@ -79,6 +85,7 @@ export function useGame() {
     ...state,
     caveInsHere: Math.max(0, state.attempts.length - 1),
     startRun,
+    readyForQuestion,
     answer,
     chooseTunnel,
     askSurface: () => dispatch({ type: 'surface/ask' }),

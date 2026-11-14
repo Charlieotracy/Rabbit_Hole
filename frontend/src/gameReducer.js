@@ -3,8 +3,9 @@
 //
 // screen:  'start' -> 'run' -> 'end' -> (reset) 'start'
 // attempts: the current layer's turns, in order. The first is the original
-//   explanation and question; each cave-in adds another. `chosen` is the
-//   option the player picked and `result` is 'wrong' | 'right' once known.
+//   explanation and question; each cave-in adds another. `ready` flips when
+//   the player clicks "Ready for a question?", `chosen` is the option they
+//   picked and `result` is 'wrong' | 'right' once known.
 
 const LOST_MESSAGE = "That dig got lost because the server restarted. Let's start a fresh one!"
 
@@ -17,7 +18,7 @@ export const initialState = {
   topic: '', // current layer's topic
   depth: 0, // 0 = surface
   path: [], // topic of every layer dug, in order
-  attempts: [], // current layer: [{ turn, chosen, result }]
+  attempts: [], // current layer: [{ turn, ready, chosen, result }]
   breakthrough: null, // { artifact, tunnels, stage: 'dig' | 'reveal', chosen }
   history: [], // cleared layers: [{ depth, topic, caveIns }]
   pending: null, // 'start' | 'answer' | 'dig' | 'surface'
@@ -48,13 +49,16 @@ export function reducer(state, action) {
         topic: data.topic,
         depth: data.depth,
         path: [data.topic],
-        attempts: [{ turn: data.turn, chosen: null, result: null }],
+        attempts: [{ turn: data.turn, ready: false, chosen: null, result: null }],
         breakthrough: null,
         history: [],
         pending: null,
         event: bump(state, 'descend'),
       }
     }
+
+    case 'question/ready':
+      return { ...state, attempts: updateLast(state.attempts, { ready: true }) }
 
     case 'answer/pending':
       return {
@@ -70,7 +74,7 @@ export function reducer(state, action) {
         pending: null,
         attempts: [
           ...updateLast(state.attempts, { result: 'wrong' }),
-          { turn: action.turn, chosen: null, result: null },
+          { turn: action.turn, ready: false, chosen: null, result: null },
         ],
         event: bump(state, 'cave'),
       }
@@ -109,7 +113,7 @@ export function reducer(state, action) {
         depth: data.depth,
         topic: data.topic,
         path: [...state.path, data.topic],
-        attempts: [{ turn: data.turn, chosen: null, result: null }],
+        attempts: [{ turn: data.turn, ready: false, chosen: null, result: null }],
         breakthrough: null,
         event: bump(state, 'descend'),
       }

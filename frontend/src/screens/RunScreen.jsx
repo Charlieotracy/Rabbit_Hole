@@ -32,23 +32,38 @@ export default function RunScreen({ game }) {
     window.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' })
   }, [game.depth])
 
+  // The bunny digs itself down after a right answer, pops back up to point
+  // out the tunnels, digs down again into the chosen tunnel, and drops in
+  // from above on each new layer.
+  const stage = game.breakthrough?.stage
+  let motion = 'drop'
+  if (game.pending === 'dig' || stage === 'dig') motion = 'sink'
+  else if (stage === 'reveal') motion = 'rise'
+
   let mood = 'idle'
-  if (game.pending === 'dig' || game.breakthrough?.stage === 'dig') mood = 'dig'
+  if (motion === 'sink') mood = 'dig'
   else if (flash?.type === 'cave') mood = 'dazed'
-  else if (flash?.type === 'break') mood = 'cheer'
   else if (talking) mood = 'talk'
 
   const caving = flash?.type === 'cave'
+  // The first layer waits for the bunny to dig down from the surface and the
+  // camera to follow; deeper layers only wait for the camera.
+  const enterDelay = game.depth === 1 ? 2.1 : 0.8
 
   return (
-    <main className={`app run ${caving ? 'run--shake' : ''}`}>
+    <main className={`app run ${caving ? 'run--shake' : ''}`} style={{ '--hud-delay': `${enterDelay}s` }}>
       <Hud game={game} />
       <DepthGauge depth={game.depth} />
       {caving && <Particles key={flash.id} mode="fall" count={26} className="run__rubble" />}
 
-      <section className="chat" key={game.depth} aria-label={`Layer ${game.depth}: ${game.topic}`}>
+      <section
+        className="chat"
+        key={game.depth}
+        aria-label={`Layer ${game.depth}: ${game.topic}`}
+        style={{ '--enter-delay': `${enterDelay}s`, '--drop-delay': `${enterDelay + 0.2}s` }}
+      >
         <div className="chat__avatar">
-          <Bunny mood={mood} lamp={isDark(game.depth)} scale={3} />
+          <Bunny mood={mood} motion={motion} lamp={isDark(game.depth)} scale={3} />
         </div>
         <ChatLog game={game} onTyping={setTalking} />
       </section>
