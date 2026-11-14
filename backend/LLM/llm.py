@@ -115,7 +115,6 @@ def _validate_explanation(text):
 def validate_layer(layer):
     """Raise ValueError if anything the frontend needs is missing or malformed."""
     _require(isinstance(layer, dict), "layer must be an object")
-    _require(isinstance(layer.get("topic"), str) and layer["topic"].strip(), "topic missing")
     _validate_explanation(layer.get("explanation"))
     _validate_question(layer.get("question"))
 
@@ -199,7 +198,6 @@ Already covered, do not repeat: {covered}
 
 Write this layer as JSON with exactly these fields:
 {{
-  "topic": "short name for this layer",
   "explanation": "at most 100 words that teach ONE idea about the topic",
   "question": {{
     "text": "one question that checks the idea",
@@ -243,7 +241,7 @@ def generate_layer(topic, path, depth):
             if not passes_checker(layer["explanation"], layer["question"]):
                 raise ValueError("checker rejected the question")
             layer["depth"] = depth  # set by our code, not trusted from the model
-            layer["topic"] = topic # use th ename the player chose, not the model's rename
+            layer["topic"] = topic  # always the player's chosen topic, set by our code
             shuffle_options(layer["question"])
             return layer
         except (ValueError, json.JSONDecodeError) as e:
