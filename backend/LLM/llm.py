@@ -243,8 +243,10 @@ class CheckerError(Exception):
     nothing is fed back, but the question is still not trusted."""
 
 
-# The blind check only runs from this depth down. At the surface, a big-picture
-# question a student could already answer is fine.
+# The blind check (would a student get it right without reading the lesson?)
+# only counts from this depth down. At the surface, a big-picture question a
+# student could already answer is fine. The level check in the same call runs
+# at every depth.
 BLIND_CHECK_FROM_DEPTH = 3
 
 LESSON_CHECK_PROMPT = """Check this quiz question against the lesson it is based on.
@@ -273,21 +275,38 @@ Reply with JSON only:
     lesson, otherwise false,
   "problem": "one sentence on the main problem with this question, or empty if none"}}"""
 
-BLIND_CHECK_PROMPT = """A typical {level} student has NOT read the lesson. They see only this
-quiz question:
+# One checker call does both the level check and the blind check, so keeping
+# difficulty in line costs no extra model call from BLIND_CHECK_FROM_DEPTH on.
+STUDENT_CHECK_PROMPT = """Rabbit Hole teaches a topic in layers that get gradually harder. This quiz
+question is for depth {depth}.
+
+The level asked for at this depth:
+{level_here}
+
+{level_easier}
+
+{level_harder}
 
 Question: {question}
 Options:
 {options}
 
-Think about how that student would do. First reason it through, then give the
-verdict. Also look for wording that gives the answer away even to someone who
-knows nothing: one option longer, more specific, or more carefully hedged than
-the rest; the only option that fits the question's grammar; giveaway words; or
-three options that are obviously silly.
+1. Level: compare the question with the levels above. Look at the kind of
+thinking it asks for and how close the wrong options are to the right one.
+"too easy" if it fits the easier level better, "too hard" if it fits the harder
+level better, otherwise "right". Difficulty should rise gradually, so only call
+it off if it clearly matches a neighboring level better.
+
+2. Guessing: a typical {level} student has NOT read the lesson and sees only the
+question. How would they do? Also look for wording that gives the answer away
+even to someone who knows nothing: one option longer, more specific, or more
+carefully hedged than the rest; the only option that fits the question's
+grammar; giveaway words; or three options that are obviously silly.
 
 Reply with JSON only:
-{{"reasoning": "how the student would approach it, and any wording clues",
+{{"level_reasoning": "how the question compares with the levels above",
+  "level": "too easy" or "right" or "too hard",
+  "reasoning": "how the student would approach it without the lesson, and any wording clues",
   "likely_pick": the number of the option they would most likely pick,
   "confidence": "high" or "medium" or "low",
   "wording_gives_it_away": true or false}}"""
@@ -370,15 +389,41 @@ def _lesson_check(explanation, q):
                              f'but the explanation supports "{options[i]}":', whys[i]))
 
 
-def _blind_problems(q, depth):
-    """Soft problems: without the lesson, would the player get it anyway?
+def _student_problems(q, depth):
+    """Soft problems: is the question at this depth's level, and (from
+    BLIND_CHECK_FROM_DEPTH on) would the player get it without the lesson?
     Returns a list of reasons (empty if none)."""
+    blind = depth >= BLIND_CHECK_FROM_DEPTH
     level = level_for(depth)
-    reply = _ask_checker(BLIND_CHECK_PROMPT.format(
-        level=level, question=q["text"], options=_options_text(q)))
-    reasoning = _sentence(reply.get("reasoning"))
+    easier, here, harder = _neighbor_levels(DIFFICULTY_TIERS, depth, _question_level_text)
+    try:
+        reply = _ask_checker(STUDENT_CHECK_PROMPT.format(
+            depth=depth, level=level, question=q["text"], options=_options_text(q),
+            level_here=here,
+            level_easier=f"One level easier (earlier layers):\n{easier}" if easier
+            else "There is no easier level; this is the first one.",
+            level_harder=f"One level harder (deeper layers):\n{harder}" if harder
+            else "There is no harder level; this is the deepest one."))
+    except CheckerError as e:
+        if blind:
+            raise  # the blind check is part of trusting the question
+        logger.warning("level check depth %d skipped: %s", depth, e)
+        return []
 
     problems = []
+    verdict = str(reply.get("level", "")).strip().lower()
+    logger.info("level check depth %d: question is %s", depth, verdict or "?")
+    if verdict in ("too easy", "too hard"):
+        direction = ("Make it harder: ask for the kind of thinking this level asks for and "
+                     "make the wrong options closer." if verdict == "too easy" else
+                     "Make it easier: ask for the kind of thinking this level asks for and "
+                     "make the wrong options easier to rule out.")
+        problems.append(_join(f"the question is {verdict} for depth {depth}:",
+                              _sentence(reply.get("level_reasoning")), direction))
+    if not blind:
+        return problems
+
+    reasoning = _sentence(reply.get("reasoning"))
     if reply.get("wording_gives_it_away") is True:
         problems.append(_join("the wording gives the answer away without reading the explanation:",
                               reasoning,
@@ -466,8 +511,7 @@ def check_question(explanation, q, depth):
     if length:
         soft.append(length)
     _lesson_check(explanation, q)  # hard: raises Rejected
-    if depth >= BLIND_CHECK_FROM_DEPTH:
-        soft += _blind_problems(q, depth)
+    soft += _student_problems(q, depth)
     return soft
 
 
@@ -599,8 +643,20 @@ def explanation_difficulty(depth):
 
 
 def question_difficulty(depth):
-    tier = _tier_for(depth)
+    return _question_level_text(_tier_for(depth))
+
+
+def _question_level_text(tier):
     return tier[2] + "\n" + tier[4]
+
+
+def _neighbor_levels(tiers, depth, describe):
+    """(easier, this, harder) descriptions of the tiers around `depth`, so the
+    checker can tell whether something rises gradually. None at either end."""
+    i = next(i for i, t in enumerate(tiers) if t[0] is None or depth <= t[0])
+    easier = describe(tiers[i - 1]) if i > 0 else None
+    harder = describe(tiers[i + 1]) if i + 1 < len(tiers) else None
+    return easier, describe(tiers[i]), harder
 
 
 # What a layer covers. The first layer is a broad overview of the whole topic;
@@ -675,6 +731,73 @@ def tunnel_max_words(path, depth):
 def tunnels_focus_for(topic, path, depth):
     _, words, template = _tunnel_tier(path, depth)
     return template.format(topic=topic) + TUNNEL_TITLE_RULE.format(words=words)
+
+
+TUNNEL_CHECK_PROMPT = """Rabbit Hole lets the player dig from a broad topic into narrower and narrower
+subtopics. Each layer's tunnels should be a little more specific than the
+layer they leave from, never a sudden jump into specialist detail.
+
+Path so far: {path}
+Current layer (depth {depth}): {topic}
+Tunnels out of this layer:
+{tunnels}
+
+How niche the tunnels at this depth should be:
+{level_here}
+
+{level_broader}
+
+{level_niche}
+
+Judge every tunnel in order. Give your reasoning before each verdict:
+- "too broad": not narrower than {topic}, or repeats something on the path
+- "too niche": fits the more niche level better; a jump only a specialist
+  would follow from here
+- "right": otherwise. Only call it off if it is clearly off.
+
+Reply with JSON only:
+{{"tunnels": [
+    {{"why": "how niche this tunnel is compared with the levels above", "verdict": "too broad" or "right" or "too niche"}},
+    ... one entry per tunnel, in order (3 total)
+  ]}}"""
+
+
+def _tunnel_level_problems(topic, path, depth, tunnels):
+    """Soft problems: are the tunnels a gradual step narrower than this layer,
+    at this depth's niche level? Returns a list of reasons (empty if none).
+    A failed check is logged and treated as a pass, so it never blocks a run."""
+    tier_depth = 1 if _is_overview(path, depth) else depth
+    broader, here, niche = _neighbor_levels(
+        TUNNEL_TIERS, tier_depth, lambda t: t[2].format(topic=topic))
+    try:
+        reply = _ask_checker(TUNNEL_CHECK_PROMPT.format(
+            path=" -> ".join(path) if path else "(this is the first layer)",
+            depth=depth, topic=topic,
+            tunnels="\n".join(f"{i}. {t}" for i, t in enumerate(tunnels)),
+            level_here=here,
+            level_broader=f"One level broader (earlier layers):\n{broader}" if broader
+            else "There is no broader level; this is the first one.",
+            level_niche=f"One level more niche (deeper layers):\n{niche}" if niche
+            else "There is no more niche level; this is the deepest one."))
+        judged = reply.get("tunnels")
+        if not (isinstance(judged, list) and len(judged) == len(tunnels)
+                and all(isinstance(j, dict) for j in judged)):
+            raise CheckerError("checker did not judge all 3 tunnels")
+    except CheckerError as e:
+        logger.warning("tunnel level check %r depth %d skipped: %s", topic, depth, e)
+        return []
+
+    verdicts = [str(j.get("verdict", "")).strip().lower() for j in judged]
+    logger.info("tunnel level check %r depth %d: %s", topic, depth,
+                ", ".join(f"{t} = {v or '?'}" for t, v in zip(tunnels, verdicts)))
+    problems = []
+    for tunnel, verdict, j in zip(tunnels, verdicts, judged):
+        if verdict in ("too broad", "too niche"):
+            fix = ("Pick something a step narrower than this layer." if verdict == "too broad"
+                   else "Pick something only a step narrower than this layer, at this depth's level.")
+            problems.append(_join(f'tunnel "{tunnel}" is {verdict} for depth {depth}:',
+                                  _sentence(j.get("why")), fix))
+    return problems
 
 
 def _context(topic, path):
@@ -837,30 +960,37 @@ def generate_details(topic, path, depth, explanation):
         icons=json.dumps(ICONS),
     )
     last_error, feedback = None, None
-    fallback = None  # last usable reply whose tunnel titles were too long
+    best = None  # (reply, soft problems): the best usable try so far
     for attempt in range(1, MAX_TRIES + 1):
         try:
             details = extract_json(ask_model(with_feedback(prompt, feedback)))
             _validate_details(details)
             result = {"artifact": details["artifact"], "tunnels": details["tunnels"]}
-            # Too-long titles are soft: retried, but if every try is too long
-            # the last usable reply is shipped rather than ending the run.
+            # Soft problems: retried, but if every try has one, the best
+            # usable reply is shipped rather than ending the run. Long titles
+            # are caught in code first, which saves the checker call.
             max_words = tunnel_max_words(path, depth)
             long = [t for t in result["tunnels"] if len(t.split()) > max_words]
-            if not long:
+            if long:
+                soft = [f"these tunnel titles are too long: {long}. Each tunnel is just "
+                        f"a subject name of at most {max_words - 1} words."]
+            else:
+                soft = _tunnel_level_problems(topic, path, depth, result["tunnels"])
+            if not soft:
                 return result
-            fallback = result
-            last_error = f"tunnel titles too long: {long}"
-            feedback = (f"these tunnel titles are too long: {long}. Each tunnel is just "
-                        f"a subject name of at most {max_words - 1} words.")
+            if best is None or len(soft) <= len(best[1]):
+                best = (result, soft)
+            last_error = "soft: " + " | ".join(soft)
+            feedback = " ".join(soft)
         except (ValueError, json.JSONDecodeError) as e:
             last_error, feedback = e, f"the reply was not usable ({e})."
         logger.warning("details %r depth %d, try %d/%d failed: %s",
                        topic, depth, attempt, MAX_TRIES, last_error)
-    if fallback is not None:
-        logger.warning("details %r depth %d: shipping long tunnel titles after %d tries",
-                       topic, depth, MAX_TRIES)
-        return fallback
+    if best is not None:
+        result, soft = best
+        logger.warning("details %r depth %d: shipping tunnels with soft problems after "
+                       "%d tries: %s", topic, depth, MAX_TRIES, " | ".join(soft))
+        return result
     raise RuntimeError(f"Could not pick artifact and tunnels for {topic!r}: {last_error}")
 
 
