@@ -618,10 +618,24 @@ the big picture (what the topic is or its main idea), not a specific fact."""
 
 QUESTION_FOCUS_ZOOM = "Focus: check the ONE specific idea this lesson teaches."
 
-TUNNELS_OVERVIEW = """Tunnels: three main parts or branches of {topic}, each a clear step more
-specific than this overview."""
-
-TUNNELS_ZOOM = "Tunnels: three narrower parts of {topic}, each more specific than this layer."
+# How niche the tunnels out of a layer are, by that layer's depth. They narrow
+# slowly: right after the first layer they are still broad, well-known parts
+# of the topic, and only the deep layers lead into specialist corners.
+# (deepest layer depth this applies to, template)
+TUNNEL_TIERS = [
+    (1, """Tunnels: three main parts or branches of {topic} that most people have
+heard of, each a clear step more specific than this overview. Pick the big,
+well-known areas, not specialist details."""),
+    (3, """Tunnels: three well-known parts of {topic}, each a bit narrower than this
+layer but still broad: the kind of thing a textbook chapter or a popular
+article would cover. Not specialist details or obscure cases yet."""),
+    (5, """Tunnels: three more specific parts of {topic}, such as a particular
+mechanism, a named case or example, or a key debate. Narrower than this layer,
+but still things a keen student of the subject would come across."""),
+    (None, """Tunnels: three niche parts of {topic}: specialist details, edge cases,
+lesser-known findings, or open questions that only someone deep into the
+subject would know about. Each clearly narrower than this layer."""),
+]
 
 
 def _is_overview(path, depth):
@@ -639,8 +653,11 @@ def question_focus_for(depth):
 
 
 def tunnels_focus_for(topic, path, depth):
-    template = TUNNELS_OVERVIEW if _is_overview(path, depth) else TUNNELS_ZOOM
-    return template.format(topic=topic)
+    if _is_overview(path, depth):
+        depth = 1
+    for deepest, template in TUNNEL_TIERS:
+        if deepest is None or depth <= deepest:
+            return template.format(topic=topic)
 
 
 def _context(topic, path):
