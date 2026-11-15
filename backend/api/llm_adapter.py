@@ -39,16 +39,13 @@ from LLM import llm  # noqa: E402  (FAKE_LLM must be in os.environ before this i
 
 logger = logging.getLogger("rabbit_hole.llm_adapter")
 
-# llm.generate_ahead() fires all 3 tunnels at once, each making up to
-# MAX_TRIES generation attempts x (1 generation call + up to 2 checker
-# calls) -- real gameplay was tripping the workspace's shared QPS limit,
-# since this one prefetch alone can generate ~3x what the player actually
-# ends up seeing. The player spends 20-40s reading/answering/caving in
-# before a dig or the next correct answer needs these, so there's room to
-# spread the three tunnels' starts out well past what just avoiding a
-# single burst would need. Tune this constant directly if the limit is
-# still being hit, or lower it if prefetches are finishing too late.
-PREFETCH_TUNNEL_COUNT = 3
+# Stopgap, not a tuning target: prefetching all 3 tunnels generates ~3x
+# what the player actually consumes, and that alone was enough to trip
+# the workspace's shared QPS limit during real gameplay. Dropped to 1 --
+# digging into tunnel 2 or 3 now falls back to live generation (slow, but
+# it works) instead of never happening. Prefetch is being replaced by
+# streaming entirely, so don't spend more effort tuning this further.
+PREFETCH_TUNNEL_COUNT = 1
 PREFETCH_STAGGER_SECONDS = 5.0
 
 # Shared by every call into the model (generate_layer, cave_in, and the
