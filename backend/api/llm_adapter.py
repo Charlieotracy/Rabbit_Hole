@@ -168,16 +168,36 @@ def cave_in(layer: dict, chosen_index: int, attempt: int) -> dict:
 
 # --------------------------------------------------- streaming (per API.md)
 
+def _retrieve_for_stream(topic: str) -> list:
+    """Passages for a streamed explanation, or [] if retrieval fails. Skipped
+    under FAKE_LLM, where llm.py ignores passages anyway, so local testing
+    doesn't wait on Vector Search or a live Wikipedia fetch."""
+    if llm.FAKE:
+        return []
+    try:
+        return retrieval.retrieve(topic)
+    except Exception:
+        logger.exception("retrieval failed for %r; streaming the explanation without sources", topic)
+        return []
+
+
 def generate_explanation(topic: str, path: list, depth: int):
     """Streams the explanation as it's generated (her real stream_model()
     token stream, not a simulated one). A rate limit before any chunk has
     been yielded retries the whole thing from scratch (safe -- nothing
     shown yet); one after some chunks were sent propagates instead, since
-    that content is already on screen and can't be cleanly retried."""
+    that content is already on screen and can't be cleanly retried.
+
+    Grounded like generate_layer: the topic's passages are retrieved once,
+    before streaming starts (the explanation needs them as input, so this
+    can't overlap with generation the way _call_generate_layer does), and
+    reused across rate-limit retries. A failed retrieval streams the
+    explanation without sources instead of failing the layer."""
+    passages = _retrieve_for_stream(topic)
     for attempt in range(1, RATE_LIMIT_MAX_ATTEMPTS + 1):
         yielded_any = False
         try:
-            for chunk in llm.generate_explanation(topic, path, depth):
+            for chunk in llm.generate_explanation(topic, path, depth, passages=passages):
                 yielded_any = True
                 yield chunk
             return
