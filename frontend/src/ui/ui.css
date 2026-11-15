@@ -56,10 +56,11 @@
   bottom: calc(var(--px) * -8);
 }
 
-/* Bottom corners take 5 pixels (20px), so the tail sits just above them. */
+/* Near the bottom on tall bubbles (just above the 20px corner); centred on
+   short ones, so it never runs into the rounded corners. */
 .bubble__tail--left-low {
-  left: calc(var(--px) * -5);
-  bottom: 22px;
+  left: calc(var(--px) * -3);
+  bottom: min(22px, calc(50% - var(--px) * 2));
 }
 
 /* ---------- PixelButton ---------- */

@@ -137,7 +137,7 @@ export function QuestionBubble({ m, newest, seen, skipToken, onTyping, onDone, g
 export function Typing({ newest, note }) {
   return (
     <div className="msg msg--bunny msg--typing">
-      <Bubble as="div" className="typing" tail={newest ? 'left-low' : 'none'}>
+      <Bubble as="div" className="typing" round="sm" tail={newest ? 'left-low' : 'none'}>
         <span className="typing__dots" role="img" aria-label="The bunny is typing">
           <i />
           <i />

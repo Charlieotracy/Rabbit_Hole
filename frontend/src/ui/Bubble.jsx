@@ -31,17 +31,16 @@ const TAIL_DOWN = [
   'LFL.......',
   'LL........',
 ]
-// Small side tail pointing down-left at the bunny. Kept short (6 pixels) so it
-// always fits on the straight part of the left edge, even on one-line bubbles.
-// The last two columns overlap the bubble: column 5 sits on its outline (open
-// in the middle so the fill flows through), column 6 is inside it.
+// Small side tail pointing down-left at the bunny. Kept tiny (4 pixels tall)
+// so it fits on the straight part of the left edge of even the shortest
+// bubble (the "..." typing bubble). The last two columns overlap the bubble:
+// column 3 sits on its outline (open in the middle so the fill flows
+// through), column 4 is inside it.
 const TAIL_SIDE = [
-  '.....LF',
-  '....LFF',
-  '...LFFF',
-  '..LFFFF',
-  '.LFFFFF',
-  'LLLLLLF',
+  '...LF',
+  '..LFF',
+  '.LFFF',
+  'LLLLF',
 ]
 const TAILS = { down: TAIL_DOWN, 'left-low': TAIL_SIDE }
 const TAIL_PALETTE = { L: 'var(--bubble-line)', F: 'var(--bubble-fill)' }
