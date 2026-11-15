@@ -312,6 +312,13 @@ Reply with JSON only:
   "wording_gives_it_away": true or false}}"""
 
 
+def _verdict(value):
+    """A checker verdict in plain form, so "Too_hard", "too-niche" or
+    "too hard." all read as the intended verdict instead of as no verdict."""
+    words = re.sub(r"[^a-z]+", " ", str(value or "").lower())
+    return " ".join(words.split())
+
+
 def _sentence(text):
     """Checker text as a sentence that can be followed by another one."""
     text = str(text or "").strip()
@@ -411,7 +418,7 @@ def _student_problems(q, depth):
         return []
 
     problems = []
-    verdict = str(reply.get("level", "")).strip().lower()
+    verdict = _verdict(reply.get("level"))
     logger.info("level check depth %d: question is %s", depth, verdict or "?")
     if verdict in ("too easy", "too hard"):
         direction = ("Make it harder: ask for the kind of thinking this level asks for and "
@@ -787,7 +794,7 @@ def _tunnel_level_problems(topic, path, depth, tunnels):
         logger.warning("tunnel level check %r depth %d skipped: %s", topic, depth, e)
         return []
 
-    verdicts = [str(j.get("verdict", "")).strip().lower() for j in judged]
+    verdicts = [_verdict(j.get("verdict")) for j in judged]
     logger.info("tunnel level check %r depth %d: %s", topic, depth,
                 ", ".join(f"{t} = {v or '?'}" for t, v in zip(tunnels, verdicts)))
     problems = []
