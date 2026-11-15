@@ -6,6 +6,13 @@
 //   explanation and question; each cave-in adds another. `ready` flips when
 //   the player clicks "Ready for a question?", `chosen` is the option they
 //   picked and `result` is 'wrong' | 'right' once known.
+// turn: filled in as it streams from the backend. `layer` (the explanation)
+//   grows piece by piece; `explained` flips when it's final; `question` and
+//   `options` arrive later (`retrying` while the backend has another go at a
+//   rejected question); `style` is set for cave-in re-explanations, and
+//   `introStyle` freezes whatever style was known when the bunny started
+//   talking, so its intro line doesn't change mid-sentence. `failed` means the
+//   stream broke and no question is coming.
 
 const LOST_MESSAGE = "That dig got lost because the server restarted. Let's start a fresh one!"
 
@@ -26,10 +33,23 @@ export const initialState = {
   summary: null,
   error: null,
   errorId: 0,
+  streamFailed: false, // the current turn's stream broke (offer retry / surface)
   event: { type: null, id: 0 }, // last big moment ('cave' | 'break' | 'descend' | 'surface')
 }
 
 const bump = (state, type) => ({ type, id: state.event.id + 1 })
+
+export const emptyTurn = () => ({
+  layer: '',
+  explained: false,
+  question: null,
+  options: [],
+  style: null,
+  introStyle: undefined,
+  retrying: null,
+  failed: false,
+})
+const newAttempt = () => ({ turn: emptyTurn(), ready: false, chosen: null, result: null })
 
 const updateLast = (attempts, patch) =>
   attempts.map((a, i) => (i === attempts.length - 1 ? { ...a, ...patch } : a))
@@ -37,7 +57,7 @@ const updateLast = (attempts, patch) =>
 export function reducer(state, action) {
   switch (action.type) {
     case 'start/pending':
-      return { ...state, pending: 'start', sentTopic: action.topic, error: null }
+      return { ...state, pending: 'start', sentTopic: action.topic, error: null, streamFailed: false }
 
     case 'start/ok': {
       const { data } = action
@@ -49,12 +69,43 @@ export function reducer(state, action) {
         topic: data.topic,
         depth: data.depth,
         path: [data.topic],
-        attempts: [{ turn: data.turn, ready: false, chosen: null, result: null }],
+        attempts: [newAttempt()],
         breakthrough: null,
         history: [],
         pending: null,
         event: bump(state, 'descend'),
       }
+    }
+
+    // Streamed pieces of the current turn (see lib/stream.js).
+    case 'turn/style':
+    case 'turn/delta':
+    case 'turn/explained':
+    case 'turn/retrying':
+    case 'turn/question': {
+      const last = state.attempts[state.attempts.length - 1]
+      if (!last) return state
+      const turn = { ...last.turn }
+      if (action.type === 'turn/style' && action.style) turn.style = action.style
+      if (action.type === 'turn/delta') {
+        if (turn.introStyle === undefined) turn.introStyle = turn.style
+        turn.layer += action.text
+      }
+      if (action.type === 'turn/explained') {
+        turn.explained = true
+        // The backend sends the full text as the final word; trust it over the pieces.
+        if (action.text) turn.layer = action.text
+        if (turn.introStyle === undefined) turn.introStyle = turn.style
+      }
+      if (action.type === 'turn/retrying') turn.retrying = { attempt: action.attempt, max: action.max }
+      if (action.type === 'turn/question') {
+        turn.explained = true
+        turn.question = action.question
+        turn.options = action.options
+        turn.retrying = null
+        if (action.style) turn.style = action.style
+      }
+      return { ...state, attempts: updateLast(state.attempts, { turn }) }
     }
 
     case 'question/ready':
@@ -74,7 +125,7 @@ export function reducer(state, action) {
         pending: null,
         attempts: [
           ...updateLast(state.attempts, { result: 'wrong' }),
-          { turn: action.turn, ready: false, chosen: null, result: null },
+          newAttempt(), // the re-explanation streams in next
         ],
         event: bump(state, 'cave'),
       }
@@ -113,7 +164,7 @@ export function reducer(state, action) {
         depth: data.depth,
         topic: data.topic,
         path: [...state.path, data.topic],
-        attempts: [{ turn: data.turn, ready: false, chosen: null, result: null }],
+        attempts: [newAttempt()],
         breakthrough: null,
         event: bump(state, 'descend'),
       }
@@ -140,6 +191,18 @@ export function reducer(state, action) {
     case 'fail': {
       if (action.lost) {
         return { ...initialState, runCount: state.runCount + 1, error: LOST_MESSAGE, errorId: state.errorId + 1 }
+      }
+      // A stream broke after the run (or new layer) had started: the current
+      // turn can't finish, so mark it failed and offer a way on.
+      if (action.stream && state.screen === 'run' && !state.pending) {
+        const last = state.attempts[state.attempts.length - 1]
+        return {
+          ...state,
+          attempts: last ? updateLast(state.attempts, { turn: { ...last.turn, failed: true, retrying: null } }) : state.attempts,
+          error: action.message,
+          errorId: state.errorId + 1,
+          streamFailed: true,
+        }
       }
       // Undo the optimistic part of whatever was pending so the player can retry.
       const undo = {

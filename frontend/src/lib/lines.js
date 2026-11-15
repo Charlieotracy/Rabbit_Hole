@@ -32,6 +32,11 @@ export const TUNNEL_PROMPT = "Look, three new tunnels! Pick one and let's go dee
 
 export const SURFACE_ASK = 'Head back up to the surface?'
 
+export const QUESTION_RETRYING = 'Still working on a fair question…'
+
+export const STREAM_FAILED =
+  "Hmm, I lost my footing down here and couldn't finish this one. Let's try that again!"
+
 export const errorLine = (message) => `Hmm, the tunnel collapsed (${message}). Want to try that again?`
 
 export function endHeadline(depth, topic) {

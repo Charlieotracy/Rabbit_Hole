@@ -53,9 +53,29 @@ export function BunnySays({ m, newest, seen, skipToken, onTyping, onDone, game, 
     <div className="msg msg--bunny">
       <Bubble variant={m.variant ?? 'bunny'} tail={newest ? 'left-low' : 'none'} label={m.label} as="div">
         <p className="msg__text">
-          <Typed text={m.text} instant={seen} skipToken={skipToken} onTyping={onTyping} onDone={finish} />
+          <Typed
+            text={m.text}
+            instant={seen}
+            streaming={m.streaming}
+            skipToken={skipToken}
+            onTyping={onTyping}
+            onDone={finish}
+          />
         </p>
         {m.ready && typed && <ReadyAction onClick={game.readyForQuestion} />}
+        {m.recover && typed && (
+          <div className="bubble-actions">
+            {m.recover === 'retry-start' ? (
+              <PixelButton variant="primary" onClick={game.retryStart} autoFocus>
+                Try again
+              </PixelButton>
+            ) : (
+              <PixelButton variant="primary" onClick={game.confirmSurface} autoFocus>
+                Head back up ↑
+              </PixelButton>
+            )}
+          </div>
+        )}
         {m.confirm && typed && (
           <div className="bubble-actions" role="group" aria-label="Head back up?">
             <PixelButton variant="primary" onClick={game.confirmSurface} disabled={busy}>
@@ -114,7 +134,7 @@ export function QuestionBubble({ m, newest, seen, skipToken, onTyping, onDone, g
   )
 }
 
-export function Typing({ newest }) {
+export function Typing({ newest, note }) {
   return (
     <div className="msg msg--bunny msg--typing">
       <Bubble as="div" className="typing" tail={newest ? 'left-low' : 'none'}>
@@ -123,6 +143,7 @@ export function Typing({ newest }) {
           <i />
           <i />
         </span>
+        {note && <span className="typing__note">{note}</span>}
       </Bubble>
     </div>
   )

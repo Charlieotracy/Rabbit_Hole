@@ -53,5 +53,10 @@ By default `.env` has `FAKE_LLM=0`, so the backend makes real model calls.
 Set `FAKE_LLM=1` instead for canned, instant content with no model calls —
 useful for frontend work. See `API.md` for the full endpoint reference.
 
+The frontend streams each layer (explanation first, question while you read).
+To see that behaviour before the backend streams, create `frontend/.env.local`
+with `VITE_FAKE_STREAM=1` and restart `npm run dev`: plain JSON responses are
+then dripped in word by word, with the question held back a few seconds.
+
 Note: the backend stores runs in memory, so restarting it loses all runs
 in progress.

@@ -80,7 +80,7 @@ export default function ChatLog({ game, onTyping }) {
           }
           let body
           if (m.kind === 'question') body = <QuestionBubble {...props} />
-          else if (m.kind === 'typing') body = <Typing newest={i === last} />
+          else if (m.kind === 'typing') body = <Typing newest={i === last} note={m.note} />
           else body = <BunnySays {...props} />
           return (
             <div key={m.id} className="chat__item" style={{ '--age': last - i }}>

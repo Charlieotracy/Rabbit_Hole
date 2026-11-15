@@ -5,11 +5,12 @@ import { useTypewriter } from '../lib/useTypewriter'
 // get the full sentence at once; the animated copy is hidden from them.
 //
 // instant:   show everything immediately (already-seen messages)
+// streaming: the text is still arriving; keep typing and don't finish yet
 // skipToken: change this number to finish typing right away
 // onTyping:  called with true while typing, false when done
 // onDone:    called once when the text has fully appeared
-export default function Typed({ text, instant = false, skipToken = 0, onTyping, onDone }) {
-  const typed = useTypewriter(text, { instant })
+export default function Typed({ text, instant = false, streaming = false, skipToken = 0, onTyping, onDone }) {
+  const typed = useTypewriter(text, { instant, streaming })
   const { done, skip } = typed
   const startToken = useRef(skipToken)
 
