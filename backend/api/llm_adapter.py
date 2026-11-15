@@ -201,6 +201,37 @@ def generate_explanation(topic: str, path: list, depth: int):
             time.sleep(delay)
 
 
+def generate_cave_in_explanation(layer: dict, chosen_index: int, attempt: int):
+    """Streams the cave-in re-explanation live (her real stream_model()
+    token stream). Same rate-limit-retry semantics as generate_explanation
+    above -- retry before any chunk has been sent, propagate after."""
+    for retry_attempt in range(1, RATE_LIMIT_MAX_ATTEMPTS + 1):
+        yielded_any = False
+        try:
+            for chunk in llm.generate_cave_in_explanation(layer, chosen_index, attempt):
+                yielded_any = True
+                yield chunk
+            return
+        except RateLimitError:
+            if yielded_any or retry_attempt == RATE_LIMIT_MAX_ATTEMPTS:
+                raise
+            delay = RATE_LIMIT_RETRY_BACKOFF_SECONDS * retry_attempt
+            logger.info(
+                "rate-limited before any cave-in text was sent for %r "
+                "(attempt %d/%d), retrying in %.1fs",
+                layer.get("topic"), retry_attempt, RATE_LIMIT_MAX_ATTEMPTS, delay,
+            )
+            time.sleep(delay)
+
+
+def cave_in_style(attempt: int) -> str:
+    return llm.cave_in_style(attempt)
+
+
+def cave_in_question_view(question: dict, style: str) -> dict:
+    return {"question": question["text"], "options": question["options"], "style": style}
+
+
 def generate_question(explanation: str, depth: int, missed_question: str = None) -> dict:
     """Returns their checked question dict (text, options, answer_index).
     Retries on a transient rate limit before giving up."""

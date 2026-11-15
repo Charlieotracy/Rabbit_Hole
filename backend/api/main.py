@@ -42,6 +42,7 @@ class RunRequest(BaseModel):
 
 class AnswerRequest(BaseModel):
     option_index: int
+    stream: bool = False
 
 
 class DigRequest(BaseModel):
@@ -276,6 +277,24 @@ def answer_run(run_id: str, body: AnswerRequest):
         return {"correct": True, "artifact": artifact, "tunnels": tunnels}
 
     attempt = node["cave_ins"]  # 0-based, before incrementing
+    # Recorded unconditionally and up front: they answered wrong regardless
+    # of whether a re-explanation can be generated for it.
+    storage.record_answer(
+        run_id, node["id"], node["topic"], node["depth"], body.option_index, False
+    )
+
+    if body.stream:
+        run["_pending_cave_in"] = {
+            "node_id": node["id"],
+            # Same fix as the non-streaming path below: keep explanation/
+            # topic/etc. from the original layer, swap in the current
+            # question (what the player actually just answered).
+            "layer": {**node["raw_layer"], "question": node["question"]},
+            "chosen_index": body.option_index,
+            "attempt": attempt,
+        }
+        return {"correct": False}
+
     try:
         # node["raw_layer"]["question"] is always the FIRST question, but
         # chosen_index refers to the CURRENT question's options -- on a
@@ -293,11 +312,56 @@ def answer_run(run_id: str, body: AnswerRequest):
 
     node["cave_ins"] += 1
     node["question"] = result["question"]
-    storage.record_answer(
-        run_id, node["id"], node["topic"], node["depth"], body.option_index, False
-    )
     storage.record_cave_in(run_id, node["id"], node["topic"], node["depth"], node["cave_ins"])
     return {"correct": False, "cave_in": llm_adapter.cave_in_view(result)}
+
+
+@app.get("/runs/{run_id}/cave-in")
+def stream_cave_in(run_id: str):
+    run = _get_run(run_id)
+    pending = run.get("_pending_cave_in")
+    if pending is None:
+        raise HTTPException(status_code=400, detail="no cave-in pending for this run")
+
+    def events():
+        layer = pending["layer"]
+        chosen_index, attempt = pending["chosen_index"], pending["attempt"]
+        style = llm_adapter.cave_in_style(attempt)
+        explanation_parts = []
+        try:
+            for chunk in llm_adapter.generate_cave_in_explanation(layer, chosen_index, attempt):
+                explanation_parts.append(chunk)
+                yield _sse("text", {"delta": chunk})
+        except Exception as exc:
+            logger.exception("streamed cave-in explanation failed")
+            yield _sse(
+                "error",
+                {"error": _friendly_message(exc), "explanation_shown": bool(explanation_parts)},
+            )
+            return
+
+        explanation = "".join(explanation_parts).strip()
+        yield _sse("explanation_committed", {"text": explanation})
+
+        try:
+            question = llm_adapter.generate_question(
+                explanation, layer.get("depth", 1), missed_question=layer["question"]["text"]
+            )
+        except Exception as exc:
+            logger.exception("streamed cave-in question failed")
+            yield _sse("error", {"error": _friendly_message(exc), "explanation_shown": True})
+            return
+
+        node = run["nodes"][pending["node_id"]]
+        node["cave_ins"] += 1
+        node["question"] = question
+        storage.record_cave_in(run_id, node["id"], node["topic"], node["depth"], node["cave_ins"])
+        run.pop("_pending_cave_in", None)
+
+        yield _sse("question", llm_adapter.cave_in_question_view(question, style))
+        yield _sse("done", {})
+
+    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @app.post("/runs/{run_id}/dig")
