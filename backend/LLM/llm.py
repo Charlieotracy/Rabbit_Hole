@@ -221,8 +221,17 @@ def shuffle_options(q):
 # sees it. A rejection carries a reason, which is logged and fed back into the
 # next generation attempt so the retry can fix the actual problem.
 
+# Failures come in two kinds:
+#   hard - the question could mark a player wrong for a right answer (not
+#          answerable from the lesson, an arguable wrong option, zero or two
+#          correct options, a wrong answer key, an unusable reply, or the
+#          checker itself failing). Never shipped.
+#   soft - the question is fair but flawed (wording gives it away, too easy,
+#          options too long or uneven). Retried, but if every try has a soft
+#          problem, the best one is shipped and logged instead of ending the run.
+
 class Rejected(ValueError):
-    """The checker turned the question down; `reason` says why."""
+    """A hard failure: the checker turned the question down; `reason` says why."""
 
     def __init__(self, reason):
         super().__init__(f"checker rejected the question: {reason}")
@@ -359,31 +368,105 @@ def _lesson_check(explanation, q):
                              f'but the explanation supports "{options[i]}":', whys[i]))
 
 
-def _blind_check(q, depth):
-    """Without the lesson, would the player get it anyway?"""
+def _blind_problems(q, depth):
+    """Soft problems: without the lesson, would the player get it anyway?
+    Returns a list of reasons (empty if none)."""
     level = level_for(depth)
     reply = _ask_checker(BLIND_CHECK_PROMPT.format(
         level=level, question=q["text"], options=_options_text(q)))
     reasoning = _sentence(reply.get("reasoning"))
 
+    problems = []
     if reply.get("wording_gives_it_away") is True:
-        raise Rejected(_join("the wording gives the answer away without reading the explanation:",
-                             reasoning,
-                             "Make all four options match in length, detail, and grammar."))
+        problems.append(_join("the wording gives the answer away without reading the explanation:",
+                              reasoning,
+                              "Make all four options match in length, detail, and grammar."))
     if (reply.get("likely_pick") == q["answer_index"]
             and str(reply.get("confidence", "")).strip().lower() == "high"):
-        raise Rejected(_join(f"too easy: a {level} student who has not read the explanation "
-                             "would confidently pick the right answer.", reasoning,
-                             "Make the question depend on this layer's specific idea and make "
-                             "the wrong options closer."))
+        problems.append(_join(f"too easy: a {level} student who has not read the explanation "
+                              "would confidently pick the right answer.", reasoning,
+                              "Make the question depend on this layer's specific idea and make "
+                              "the wrong options closer."))
+    return problems
+
+
+# Option length limits, checked in code before any checker call. Looser than
+# the prompt asks for (10 words, within 3), so small overruns pass and only
+# clear giveaways, like one option much longer than the rest, are flagged.
+# Too long or uneven options are a soft problem: repaired if possible, retried
+# otherwise, and shipped as a last resort.
+MAX_OPTION_WORDS = 12
+MAX_OPTION_WORD_GAP = 4
+
+
+def _length_problem(q):
+    """What's wrong with the options' lengths, or None if they're fine."""
+    counts = [len(o.split()) for o in q["options"]]
+    for i, n in enumerate(counts):
+        if n > MAX_OPTION_WORDS:
+            return (f'option "{q["options"][i]}" is {n} words; keep every option '
+                    "to at most 10 words.")
+    longest, shortest = max(counts), min(counts)
+    if longest - shortest > MAX_OPTION_WORD_GAP:
+        return (f'the options range from {shortest} to {longest} words; '
+                f'"{q["options"][counts.index(longest)]}" stands out. Keep all four '
+                "within 3 words of each other.")
+    return None
+
+
+REPAIR_OPTIONS_PROMPT = """The answer options for this quiz question are too long or uneven: {problem}
+
+Question: {question}
+Options:
+{options}
+The correct option is number {correct}.
+
+Rewrite ONLY the options:
+- Each option is at most 10 words, and all four are within 3 words of each other.
+- Keep each option's meaning. Shorten by cutting extra detail, not by making it vague.
+- Option {correct} must stay the one correct answer; the others must stay wrong
+  but believable.
+- Write all four in the same grammatical form.
+- Keep them in the same order.
+
+Reply with JSON only:
+{{"options": ["four", "rewritten", "options", "here"]}}"""
+
+
+def _repair_options(q, problem):
+    """Shorten/even out the options of an otherwise usable question, keeping its
+    text and which option is correct. Cheaper than writing a new question, and
+    keeps a question that was only too wordy. Returns the repaired question, or
+    None if the repair didn't fix it (the caller keeps the original)."""
+    prompt = REPAIR_OPTIONS_PROMPT.format(
+        problem=problem, question=q["text"], options=_options_text(q), correct=q["answer_index"])
+    try:
+        reply = extract_json(ask_model(prompt))
+        repaired = dict(q, options=reply.get("options") if isinstance(reply, dict) else None)
+        _validate_question(repaired)
+    except (ValueError, json.JSONDecodeError) as e:
+        logger.warning("option repair failed (%s); keeping the original options", e)
+        return None
+    still = _length_problem(repaired)
+    if still:
+        logger.warning("option repair did not fix lengths (%s); keeping the original options", still)
+        return None
+    logger.info("repaired option lengths: %s", problem)
+    return repaired
 
 
 def check_question(explanation, q, depth):
-    """Raise Rejected (with a reason) if the question is not fair or too easy,
-    or CheckerError if the checker itself failed. Returns None if it passes."""
-    _lesson_check(explanation, q)
+    """Check a question. Raises Rejected for a hard failure (not fair), or
+    CheckerError if the checker itself failed. Otherwise returns the list of
+    soft problems (empty if the question is clean)."""
+    soft = []
+    length = _length_problem(q)
+    if length:
+        soft.append(length)
+    _lesson_check(explanation, q)  # hard: raises Rejected
     if depth >= BLIND_CHECK_FROM_DEPTH:
-        _blind_check(q, depth)
+        soft += _blind_problems(q, depth)
+    return soft
 
 
 def with_feedback(prompt, feedback):
@@ -410,19 +493,23 @@ QUESTION_RULES = """Question rules:
 - Never ask the player to just find a phrase from the explanation.
 - Exactly one option is correct, and someone who understood the explanation can
   tell which one. The other three must be clearly wrong to them, and only to them.
-- Every wrong option must be tempting to someone who only skimmed. Build each one
-  from one of these:
+
+Rules for the four options:
+- Each option is a short phrase of at most 10 words.
+- All four options are about the same length (within 3 words of each other) and
+  have the same level of detail and technical vocabulary.
+- Write every option in the same grammatical form, and make them the same kind
+  of thing (all causes, all numbers, all places, ...).
+- Wrong options are believable misconceptions about THIS topic, using real terms
+  from the same field, not vague or obviously silly answers. Build each one from:
   * a common misconception a beginner would actually hold about this idea
   * a statement that is true on its own but does not answer this question
   * a near miss that gets one key detail wrong (cause swapped with effect, wrong
     direction, wrong amount, a related term mixed up)
-- All four options match in length, grammar, and level of detail, and are the same
-  kind of thing (all causes, all numbers, all places, ...).
-- The correct option must not stand out: do not copy the explanation's exact
-  wording into it, and do not make it the longest or most hedged one.
-- No joke or absurd options, nothing off topic, no "all of the above" or
-  "none of the above", and no giveaway words like "always" or "never" that only
-  appear in wrong options."""
+- The correct option must not be the only one that uses words from the
+  explanation, and must not be the most hedged one.
+- No "all of the above" or "none of the above", and no giveaway words like
+  "always" or "never" that only appear in wrong options."""
 
 # Cave-in explanations often use an analogy or example; the question must still
 # test the idea itself. Harmless for normal layers, so it is always included.
@@ -645,8 +732,12 @@ def generate_question(explanation, depth, missed_question=None):
     """Write a question for `explanation` and run it past the checker.
     Returns {"text", "options", "answer_index"} with the options shuffled.
     `missed_question` (cave-ins) is the question the player just got wrong,
-    so the new one isn't a reworded copy. Rejections are fed into the next
-    try; raises RuntimeError after MAX_TRIES."""
+    so the new one isn't a reworded copy.
+
+    Every problem found is fed into the next try. A question with a hard
+    failure is never returned. If every try has a problem but at least one
+    had only soft ones, the best of those (fewest soft problems) is returned
+    and logged. Raises RuntimeError only if all MAX_TRIES failed hard."""
     if FAKE:
         return _fake_question(cave_in=missed_question is not None)
 
@@ -658,13 +749,22 @@ def generate_question(explanation, depth, missed_question=None):
         missed=MISSED_NOTE.format(question=missed_question) if missed_question else "",
     )
     last_error, feedback = None, None
+    best = None  # (question, soft problems): the best fair-but-flawed try so far
     for attempt in range(1, MAX_TRIES + 1):
         try:
             q = extract_json(ask_model(with_feedback(prompt, feedback)))
             _validate_question(q)
-            check_question(explanation, q, depth)
             q = {"text": q["text"], "options": q["options"], "answer_index": q["answer_index"]}
-            return shuffle_options(q)
+            problem = _length_problem(q)
+            if problem:  # fix just the options rather than writing a new question
+                q = _repair_options(q, problem) or q
+            soft = check_question(explanation, q, depth)
+            if not soft:
+                return shuffle_options(q)
+            if best is None or len(soft) <= len(best[1]):
+                best = (q, soft)
+            last_error = "soft: " + " | ".join(soft)
+            feedback = " ".join(soft)
         except Rejected as e:
             last_error, feedback = e, e.reason
         except CheckerError as e:
@@ -673,6 +773,11 @@ def generate_question(explanation, depth, missed_question=None):
             last_error, feedback = e, f"the reply was not usable ({e})."
         logger.warning("question depth %d, try %d/%d failed: %s",
                        depth, attempt, MAX_TRIES, last_error)
+    if best is not None:
+        q, soft = best
+        logger.warning("question depth %d: shipping a fair question with soft problems "
+                       "after %d tries: %s", depth, MAX_TRIES, " | ".join(soft))
+        return shuffle_options(q)
     raise RuntimeError(f"Could not generate a question: {last_error}")
 
 
