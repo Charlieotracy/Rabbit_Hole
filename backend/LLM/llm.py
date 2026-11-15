@@ -268,7 +268,9 @@ Reply with JSON only:
     {{"why": "reasoning from the lesson", "verdict": "correct" or "wrong" or "arguable"}},
     ... one entry per option, in order (4 total)
   ],
-  "answerable_from_lesson": true or false,
+  "answerable_from_lesson": true only if someone with no prior knowledge of the
+    subject could pick the right option and rule out the others using only the
+    lesson, otherwise false,
   "problem": "one sentence on the main problem with this question, or empty if none"}}"""
 
 BLIND_CHECK_PROMPT = """A typical {level} student has NOT read the lesson. They see only this
@@ -493,21 +495,17 @@ QUESTION_RULES = """Question rules:
 - Never ask the player to just find a phrase from the explanation.
 - Exactly one option is correct, and someone who understood the explanation can
   tell which one. The other three must be clearly wrong to them, and only to them.
+- No prior knowledge needed: someone who has never studied this subject must be
+  able to answer using only the lesson. Do not use any technical term, fact, or
+  name in the question or options that the lesson does not give or explain, and
+  never make a wrong option one that can only be ruled out with outside knowledge.
 
 Rules for the four options:
 - Each option is a short phrase of at most 10 words.
-- All four options are about the same length (within 3 words of each other) and
-  have the same level of detail and technical vocabulary.
+- All four options are about the same length (within 3 words of each other).
 - Write every option in the same grammatical form, and make them the same kind
   of thing (all causes, all numbers, all places, ...).
-- Wrong options are believable misconceptions about THIS topic, using real terms
-  from the same field, not vague or obviously silly answers. Build each one from:
-  * a common misconception a beginner would actually hold about this idea
-  * a statement that is true on its own but does not answer this question
-  * a near miss that gets one key detail wrong (cause swapped with effect, wrong
-    direction, wrong amount, a related term mixed up)
-- The correct option must not be the only one that uses words from the
-  explanation, and must not be the most hedged one.
+- The correct option must not be the most hedged one.
 - No "all of the above" or "none of the above", and no giveaway words like
   "always" or "never" that only appear in wrong options."""
 
@@ -536,8 +534,9 @@ DIFFICULTY_TIERS = [
      """- Question type: check the player understood the core idea. Describe a simple,
   new example (not the one in the explanation) and ask what it shows, or ask
   which statement correctly describes the idea.
-- Wrong options: common beginner misconceptions. A careful reader rules them
-  out quickly."""),
+- Wrong options: common beginner misconceptions in everyday words. They should
+  sound reasonable to someone who skipped the lesson, but anyone who read it
+  rules them out quickly. Do not make them technical or near misses."""),
     (4, "high school",
      "Difficulty: SHALLOW (depth 3-4). Level: HIGH SCHOOL.",
      """- Language: what a good high school class would use. Basic subject terms are
@@ -546,8 +545,15 @@ DIFFICULTY_TIERS = [
   idea, not just what happens.""",
      """- Question type: apply the idea. Give a short scenario the explanation did not
   mention and ask the player to predict what happens or choose what to do.
-- Wrong options: near misses that would be right if one detail of the rule
-  were different."""),
+- Wrong options: believable misconceptions about THIS topic, not vague or
+  obviously silly answers. Build each one from:
+  * a common misconception a beginner would actually hold about this idea
+  * a statement that is true on its own but does not answer this question
+  * a near miss that would be right if one detail of the rule were different
+    (cause swapped with effect, wrong direction, wrong amount)
+  All four options use the same level of detail and the same vocabulary, and
+  the correct option is not the only one that uses words from the lesson. Any
+  subject term in an option must come from the lesson itself."""),
     (6, "first-year college",
      "Difficulty: DEEP (depth 5-6). Level: INTRO COLLEGE (first-year course).",
      """- Language: proper subject vocabulary, used precisely. Assume the player
@@ -557,9 +563,10 @@ DIFFICULTY_TIERS = [
      """- Question type: reason about cause, condition, or exception. Ask why something
   happens, what would change if one factor changed, or which situation the idea
   does NOT apply to.
-- Wrong options: all sound expert. Each is a real, related effect or a correct
-  statement about a neighboring idea, so only someone who grasped the exact
-  reason can pick the right one."""),
+- Wrong options: all sound expert, using the same vocabulary as the correct
+  one. Each is a real, related effect or a correct statement about a
+  neighboring idea, taken from what the lesson says, so only someone who
+  grasped the exact reason can pick the right one."""),
     (None, "upper-level college",
      "Difficulty: CORE (depth 7 and below). Level: COLLEGE (upper-level course).",
      """- Language: the precise terms and distinctions a college course in this
