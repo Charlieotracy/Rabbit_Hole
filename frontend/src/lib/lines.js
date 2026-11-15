@@ -24,18 +24,11 @@ export const caveIntro = (style, attempt) =>
     attempt,
   )
 
-export const CHEERS = [
-  'Yes! You broke through!',
-  "That's it! The wall's giving way!",
-  'Nailed it! Keep digging, keep digging!',
-  'Crunch! We broke through!',
-]
+export const READY_PROMPT = 'Ready for a question?'
 
-export const TUNNEL_PROMPTS = [
-  'Three tunnels branch off from here. Which one should we take?',
-  'Look, three new tunnels! Pick one and let’s go deeper.',
-  'The ground splits three ways. Where to next?',
-]
+export const RIGHT_ANSWER = 'You got it right!'
+
+export const TUNNEL_PROMPT = "Look, three new tunnels! Pick one and let's go deeper!"
 
 export const tunnelReply = (tunnel) => `Let's go: ${tunnel}`
 

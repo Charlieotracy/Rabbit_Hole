@@ -52,9 +52,23 @@ def _get_client():
     return _client
 
 
-def ask_model(prompt, temperature=0.7):
-    """Send one prompt to the model and return its reply as plain text."""
-    response = _get_client().chat.completions.create(
+# How hard the model thinks before checker replies ("low", "medium", "high").
+# Checking is mostly careful reading, so "low" saves time. Set
+# CHECKER_REASONING_EFFORT to another level, or to an empty value to send none
+# and use the endpoint's default. Generation always uses the default.
+CHECKER_REASONING_EFFORT = os.environ.get("CHECKER_REASONING_EFFORT", "low").strip() or None
+
+# Flipped off the first time the endpoint refuses reasoning_effort, so one
+# unsupported setting doesn't break every call after it.
+_reasoning_effort_supported = True
+
+
+def ask_model(prompt, temperature=0.7, reasoning_effort=None):
+    """Send one prompt to the model and return its reply as plain text.
+    `reasoning_effort` asks a reasoning model to think less or more; None
+    leaves it at the endpoint's default."""
+    global _reasoning_effort_supported
+    kwargs = dict(
         model=MODEL,
         messages=[
             {"role": "system", "content": SYSTEM},
@@ -62,6 +76,19 @@ def ask_model(prompt, temperature=0.7):
         ],
         temperature=temperature,
     )
+    if reasoning_effort and _reasoning_effort_supported:
+        try:
+            response = _get_client().chat.completions.create(
+                reasoning_effort=reasoning_effort, **kwargs)
+            return text_from_content(response.choices[0].message.content)
+        except Exception as e:
+            from openai import BadRequestError
+            if not isinstance(e, BadRequestError):
+                raise
+            _reasoning_effort_supported = False
+            logger.warning("endpoint refused reasoning_effort=%r (%s); "
+                           "sending calls without it from now on", reasoning_effort, e)
+    response = _get_client().chat.completions.create(**kwargs)
     return text_from_content(response.choices[0].message.content)
 
 
@@ -229,7 +256,8 @@ def _options_text(q):
 
 def _ask_checker(prompt):
     try:
-        reply = extract_json(ask_model(prompt, temperature=0))
+        reply = extract_json(ask_model(prompt, temperature=0,
+                                       reasoning_effort=CHECKER_REASONING_EFFORT))
     except (ValueError, json.JSONDecodeError) as e:
         raise CheckerError(f"unreadable checker reply: {e}") from e
     if not isinstance(reply, dict):

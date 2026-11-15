@@ -154,15 +154,6 @@
 .start__bubble .bubble__tail--down,
 .end__bubble .bubble__tail--down { left: calc(50% - 14px); }
 
-/* The bunny hops down the burrow when the run begins. */
-.start--gone .start__bunny { animation: hop-in 0.5s cubic-bezier(0.5, -0.6, 0.8, 0.6) forwards; }
-
-@keyframes hop-in {
-  0% { transform: translate(0, 0); }
-  40% { transform: translate(30px, -26px); }
-  100% { transform: translate(70px, 110%); }
-}
-
 @media (max-width: 640px) {
   :root { --horizon: 660px; }
 }
@@ -258,6 +249,5 @@
 @media (prefers-reduced-motion: reduce) {
   .caret { animation: none; }
   .end,
-  .end__pop,
-  .start--gone .start__bunny { animation-duration: 0.01s; animation-delay: 0s; }
+  .end__pop { animation-duration: 0.01s; animation-delay: 0s; }
 }

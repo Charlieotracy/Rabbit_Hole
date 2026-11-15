@@ -13,10 +13,12 @@ export default function App() {
   const game = useGame()
   const viewport = useViewport()
   const strata = Math.max(2, game.path.length + 1)
+  // Leaving the surface: let the bunny dig itself down before the camera follows.
+  const cameraDelay = game.screen === 'run' && game.depth === 1 ? 1000 : 0
 
   return (
     <>
-      <World camera={cameraY(game, viewport)} strata={strata} viewport={viewport}>
+      <World camera={cameraY(game, viewport)} strata={strata} viewport={viewport} delay={cameraDelay}>
         {game.screen !== 'end' && <StartScreen key={game.runCount} game={game} />}
       </World>
       {game.screen === 'run' && <RunScreen game={game} />}

@@ -1,11 +1,30 @@
 /* ---------- Bunny ---------- */
+/* Structure: .bunny > .bunny__hole + .bunny__clip > .bunny__body > svg.
+   Mood animations move the svg; motion animations move .bunny__body, which
+   is clipped at the feet so it can sink into (and rise out of) the hole. */
 .bunny {
   position: relative;
   display: inline-block;
   line-height: 0;
 }
 
+.bunny__clip {
+  display: block;
+  clip-path: inset(-400px -400px 0 -400px);
+}
+
+.bunny__body {
+  position: relative;
+  display: block;
+}
+
 .bunny__sprite { position: relative; }
+
+/* Frame groups: the plain body shows unless digging. */
+.bunny__dig-a,
+.bunny__dig-b,
+.bunny__mouth,
+.bunny__dazed { opacity: 0; }
 
 .bunny--idle .bunny__sprite,
 .bunny--talk .bunny__sprite {
@@ -17,15 +36,17 @@
   animation: bunny-blink 4.5s steps(1, end) infinite;
 }
 
-.bunny__mouth,
-.bunny__dazed { opacity: 0; }
-
 .bunny--talk .bunny__mouth { animation: bunny-talk 0.26s steps(1, end) infinite; }
 .bunny--cheer .bunny__mouth { opacity: 1; }
 .bunny--dazed .bunny__dazed { opacity: 1; }
 .bunny--dazed .bunny__blink { animation: none; }
 
-.bunny--dig .bunny__sprite { animation: bunny-dig 0.22s steps(1, end) infinite; }
+/* Digging: swap between paws-out and paws-scooping, with a little head bob. */
+.bunny--dig .bunny__base { opacity: 0; }
+.bunny--dig .bunny__dig-a { animation: frame-on 0.28s steps(1, end) infinite; }
+.bunny--dig .bunny__dig-b { animation: frame-off 0.28s steps(1, end) infinite; }
+.bunny--dig .bunny__sprite { animation: bunny-scoop 0.28s steps(1, end) infinite; }
+
 .bunny--cheer .bunny__sprite { animation: bunny-hop 0.5s cubic-bezier(0.3, 0.7, 0.4, 1) 2; }
 .bunny--dazed .bunny__sprite { animation: bunny-wobble 0.45s steps(2, end) 3; }
 
@@ -47,11 +68,19 @@
   50% { opacity: 0; }
 }
 
-@keyframes bunny-dig {
-  0% { transform: translate(0, 0); }
-  25% { transform: translate(-4%, 3.45%); }
-  50% { transform: translate(0, 0); }
-  75% { transform: translate(4%, 3.45%); }
+@keyframes frame-on {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes frame-off {
+  0% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+@keyframes bunny-scoop {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(3.45%); }
 }
 
 @keyframes bunny-hop {
@@ -64,10 +93,65 @@
   100% { transform: rotate(5deg); }
 }
 
+/* ---------- Motion: sink into a hole, rise out, drop in ---------- */
+.bunny__hole {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 0;
+  width: 116%;
+  height: auto;
+  transform: translate(-50%, 50%);
+}
+
+.bunny__clip { position: relative; z-index: 1; }
+
+/* Dig in place for a moment, then sink in pixel-sized steps. */
+.bunny--motion-sink .bunny__body { animation: bunny-sink 1.3s steps(1, end) forwards; }
+.bunny--motion-sink .bunny__hole { animation: hole-open 0.5s steps(1, end) both; }
+
+@keyframes bunny-sink {
+  0%, 30% { transform: translateY(0); }
+  42% { transform: translateY(18%); }
+  54% { transform: translateY(36%); }
+  66% { transform: translateY(54%); }
+  78% { transform: translateY(72%); }
+  90% { transform: translateY(90%); }
+  100% { transform: translateY(112%); }
+}
+
+@keyframes hole-open {
+  0% { transform: translate(-50%, 50%) scaleX(0.3); }
+  33% { transform: translate(-50%, 50%) scaleX(0.6); }
+  66%, 100% { transform: translate(-50%, 50%) scaleX(1); }
+}
+
+.bunny--motion-rise .bunny__body { animation: bunny-rise 0.5s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+
+@keyframes bunny-rise {
+  from { transform: translateY(112%); }
+  to { transform: translateY(0); }
+}
+
+/* Arriving on a new layer: fall in from above and land with a squash. */
+.bunny--motion-drop .bunny__body {
+  animation: bunny-drop 0.6s cubic-bezier(0.5, 0, 0.75, 0) var(--drop-delay, 0s) both;
+}
+
+@keyframes bunny-drop {
+  0% { transform: translateY(-240%); opacity: 0; }
+  15% { opacity: 1; }
+  75% { transform: translateY(0); }
+  85% { transform: translateY(0) scale(1.08, 0.9); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+
+/* ---------- Extras ---------- */
 .bunny__stars {
   position: absolute;
   top: -10%;
   right: -12%;
+  z-index: 2;
   display: flex;
   align-items: flex-start;
   gap: 2px;
@@ -83,7 +167,8 @@
 .bunny__dirt {
   position: absolute;
   left: 50%;
-  bottom: 6%;
+  bottom: 4%;
+  z-index: 2;
 }
 
 /* Headlamp beam for dark layers: a soft cone of light from the helmet. */
@@ -101,8 +186,18 @@
 @media (prefers-reduced-motion: reduce) {
   .bunny .bunny__sprite,
   .bunny--talk .bunny__mouth,
+  .bunny--dig .bunny__dig-a,
+  .bunny--dig .bunny__dig-b,
   .bunny__stars > * {
     animation: none;
   }
-  .bunny--talk .bunny__mouth { opacity: 1; }
+  .bunny--talk .bunny__mouth,
+  .bunny--dig .bunny__dig-a { opacity: 1; }
+  .bunny--motion-sink .bunny__body,
+  .bunny--motion-rise .bunny__body,
+  .bunny--motion-drop .bunny__body,
+  .bunny--motion-sink .bunny__hole {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
 }

@@ -1,10 +1,17 @@
-import { caveIntro, CHEERS, errorLine, pick, SURFACE_ASK, TUNNEL_PROMPTS, tunnelReply } from '../lib/lines.js'
+import { caveIntro, errorLine, READY_PROMPT, RIGHT_ANSWER, SURFACE_ASK, TUNNEL_PROMPT, tunnelReply } from '../lib/lines.js'
 
 // Turns the game state for the current layer into an ordered chat transcript.
 // Each message has a stable `id` so the chat knows which ones are new (and
-// should type out) and which were already shown.
+// should type out) and which were already shown. A `delay` (ms) holds a
+// message back for a moment after the previous one finishes.
 //
-// kinds: bunny | player | replies | typing | dig | artifact | tunnels | confirm
+// kinds: bunny | ready | question | player | typing | tunnels | confirm
+//
+// Each attempt reads: explanation -> (pause) "Ready for a question?" button
+// -> question with its options in one bubble -> the player's answer.
+
+const READY_DELAY_MS = 2000
+
 export function buildMessages(game) {
   const msgs = []
   const { attempts, breakthrough, depth, topic, pending } = game
@@ -26,29 +33,39 @@ export function buildMessages(game) {
         text: attempt.turn.layer,
       })
     }
-    add({ id: `question-${i}`, kind: 'bunny', emphasis: true, text: attempt.turn.question })
 
-    if (attempt.chosen === null) {
-      if (isCurrent && !breakthrough) add({ id: `replies-${i}`, kind: 'replies', options: attempt.turn.options })
-    } else {
+    if (!attempt.ready) {
+      if (isCurrent && !breakthrough) add({ id: `ready-${i}`, kind: 'ready', label: READY_PROMPT, delay: READY_DELAY_MS })
+      return
+    }
+
+    add({
+      id: `question-${i}`,
+      kind: 'question',
+      text: attempt.turn.question,
+      options: attempt.turn.options,
+      chosen: attempt.chosen,
+      result: attempt.result,
+      answerable: isCurrent && attempt.chosen === null && !breakthrough,
+    })
+
+    if (attempt.chosen !== null) {
       add({ id: `answer-${i}`, kind: 'player', text: attempt.turn.options[attempt.chosen], result: attempt.result })
     }
   })
 
   if (pending === 'answer') msgs.push({ id: 'typing-answer', kind: 'typing' })
 
+  // Right answer: the bunny digs down (avatar animation) while saying so,
+  // then after a pause points out the tunnels.
   if (breakthrough) {
-    msgs.push({ id: 'cheer', kind: 'bunny', text: pick(CHEERS, depth) })
-    if (breakthrough.stage === 'dig') {
-      msgs.push({ id: 'dig', kind: 'dig' })
-    } else {
-      msgs.push({ id: 'artifact', kind: 'artifact', artifact: breakthrough.artifact })
-      msgs.push({ id: 'tunnel-prompt', kind: 'bunny', text: pick(TUNNEL_PROMPTS, depth) })
+    msgs.push({ id: 'right', kind: 'bunny', text: RIGHT_ANSWER })
+    if (breakthrough.stage === 'reveal') {
+      msgs.push({ id: 'tunnel-prompt', kind: 'bunny', text: TUNNEL_PROMPT })
       if (breakthrough.chosen === null) {
         msgs.push({ id: 'tunnels', kind: 'tunnels', tunnels: breakthrough.tunnels })
       } else {
         msgs.push({ id: 'tunnel-choice', kind: 'player', text: tunnelReply(breakthrough.tunnels[breakthrough.chosen]) })
-        if (pending === 'dig') msgs.push({ id: 'typing-dig', kind: 'typing', digging: true })
       }
     }
   }

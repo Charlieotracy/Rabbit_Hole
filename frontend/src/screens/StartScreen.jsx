@@ -12,7 +12,7 @@ const SUGGESTIONS = ['black holes', 'the Roman Empire', 'jazz', 'how volcanoes w
 // Lives in the sky section of the World, so it scrolls away with the camera.
 //   ask     - greeting, topic input, suggestions
 //   sending - the player's topic as a chat bubble, bunny digging
-//   gone    - the bunny has hopped down the burrow (the run has started)
+//   gone    - the bunny has dug itself into the ground (the run has started)
 export default function StartScreen({ game }) {
   const [topic, setTopic] = useState('')
   const [talking, setTalking] = useState(true)
@@ -28,7 +28,10 @@ export default function StartScreen({ game }) {
     send(topic)
   }
 
-  const bunnyMood = mode === 'sending' ? 'dig' : talking ? 'talk' : 'idle'
+  // While the first layer loads the bunny digs in place; once the run starts
+  // it digs itself down into the ground and the camera follows.
+  const bunnyMood = mode === 'ask' ? (talking ? 'talk' : 'idle') : 'dig'
+  const bunnyMotion = mode === 'gone' ? 'sink' : 'none'
 
   return (
     <section className={`start start--${mode}`} aria-label="Start a dig">
@@ -81,7 +84,7 @@ export default function StartScreen({ game }) {
 
       <div className="start__ground">
         <span className="start__bunny">
-          <Bunny mood={bunnyMood} />
+          <Bunny mood={bunnyMood} motion={bunnyMotion} />
         </span>
         <Burrow className="start__burrow" />
       </div>
