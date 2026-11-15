@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
@@ -47,6 +46,7 @@ class AnswerRequest(BaseModel):
 
 class DigRequest(BaseModel):
     tunnel_index: int
+    stream: bool = False
 
 
 def _get_run(run_id: str) -> dict:
@@ -78,57 +78,28 @@ def _map_entry(node: dict) -> dict:
     return {field: node[field] for field in _MAP_FIELDS}
 
 
-def _start_prefetch(run: dict, node: dict) -> None:
-    """Kicks off generate_ahead for `node`'s tunnels in the background, as
-    soon as the layer exists -- its tunnels are already known then, well
-    before the player has even answered, let alone correctly. The player
-    then spends 20-40s reading, answering, and maybe caving in, which is
-    normally plenty of time for all three to land in run["pending_layers"]
-    before they actually reach /dig or a correct /answer.
-
-    `node["id"]` is used as a token: if a dig happens before an earlier
-    prefetch (for a node the run has since moved past) finishes, that
-    stale result must not land in pending_layers over a newer one, so a
-    late finisher checks the token is still current before writing."""
-    tunnels = node["raw_layer"]["tunnels"]
-    depth = node["depth"] + 1
-    token = node["id"]
-    run["pending_layers"] = {}
-    run["_prefetch_token"] = token
-
-    def work():
-        try:
-            result = llm_adapter.generate_ahead(path=run["path"], depth=depth, tunnels=tunnels)
-        except Exception:
-            logger.exception("generate_ahead prefetch failed; dig will fall back to live generation")
-            result = {}
-        if run.get("_prefetch_token") == token:
-            run["pending_layers"] = result
-        else:
-            logger.info("discarding stale prefetch for %r; run has moved past it", node["topic"])
-
-    threading.Thread(target=work, daemon=True).start()
-
-
 def _attach_streamed_node(run_id: str, run: dict, pending: dict, raw_layer: dict) -> dict:
-    """Finishes what create_run (or, later, dig_run) would have done
-    synchronously: builds the node from a layer that was just streamed,
-    drops it into the run exactly like the non-streaming path does, and
-    kicks off the same prefetch. Returns the new node."""
+    """Finishes what create_run (or dig_run) already set up for a node
+    that's mid-stream. For a dig, the node (and its two skipped siblings)
+    already exist with their map-visible fields set -- this just attaches
+    the generated raw_layer/question to it; for create_run's root layer,
+    it creates the node outright. Either way it becomes current and
+    extends path. Returns the node."""
     node_id = pending["node_id"]
-    node = {
+    node = run["nodes"].setdefault(node_id, {
         "id": node_id,
         "parent_id": pending["parent_id"],
         "topic": raw_layer["topic"],
         "depth": pending["depth"],
         "status": "dug",
         "cave_ins": 0,
-        "raw_layer": raw_layer,
-        "question": raw_layer["question"],
-    }
-    run["nodes"][node_id] = node
-    run["node_order"].append(node_id)
+    })
+    if node_id not in run["node_order"]:
+        run["node_order"].append(node_id)
+    node["raw_layer"] = raw_layer
+    node["question"] = raw_layer["question"]
     run["current_node_id"] = node_id
+    run["depth"] = pending["depth"]
     run["path"].append(raw_layer["topic"])
     run.pop("_pending_stream", None)
 
@@ -136,7 +107,6 @@ def _attach_streamed_node(run_id: str, run: dict, pending: dict, raw_layer: dict
         run["topic"] = raw_layer["topic"]
         storage.record_run_start(run_id, raw_layer["topic"])
 
-    _start_prefetch(run, node)
     return node
 
 
@@ -148,7 +118,6 @@ def create_run(body: RunRequest):
             "topic": body.topic,
             "depth": 1,
             "tunnels": None,
-            "pending_layers": {},
             "artifacts": [],
             "nodes": {},
             "node_order": [],
@@ -183,7 +152,6 @@ def create_run(body: RunRequest):
         "topic": raw_layer["topic"],
         "depth": 1,
         "tunnels": None,
-        "pending_layers": {},
         "artifacts": [],
         "nodes": {root_id: root_node},
         "node_order": [root_id],
@@ -193,7 +161,6 @@ def create_run(body: RunRequest):
         "path": [raw_layer["topic"]],
     }
     storage.record_run_start(run_id, raw_layer["topic"])
-    _start_prefetch(RUNS[run_id], root_node)
     return {
         "run_id": run_id,
         "depth": 1,
@@ -271,9 +238,6 @@ def answer_run(run_id: str, body: AnswerRequest):
         storage.record_answer(
             run_id, node["id"], node["topic"], node["depth"], body.option_index, True
         )
-        # The prefetch for these tunnels was already kicked off in the
-        # background back when this layer was created (create_run or
-        # dig_run) -- nothing to wait on here, so this returns immediately.
         return {"correct": True, "artifact": artifact, "tunnels": tunnels}
 
     attempt = node["cave_ins"]  # 0-based, before incrementing
@@ -377,14 +341,44 @@ def dig_run(run_id: str, body: DigRequest):
     new_depth = parent_node["depth"] + 1
     chosen_tunnel = tunnels[body.tunnel_index]
 
-    raw_layer = run["pending_layers"].get(chosen_tunnel)
-    if raw_layer is None:
-        try:
-            raw_layer = llm_adapter.generate_layer(
-                topic=chosen_tunnel, path=run["path"], depth=new_depth
-            )
-        except Exception as exc:
-            return _llm_error(exc)
+    if body.stream:
+        chosen_node_id = None
+        for i, tunnel_topic in enumerate(tunnels):
+            node_id = f"n{run['next_node_num']}"
+            run["next_node_num"] += 1
+            status = "dug" if i == body.tunnel_index else "skipped"
+            # The map-visible fields are already fully known (tunnel_topic
+            # is the final topic -- raw_layer["topic"] always equals
+            # whatever topic it's asked to generate for); raw_layer/
+            # question get attached once the stream finishes.
+            run["nodes"][node_id] = {
+                "id": node_id,
+                "parent_id": parent_node["id"],
+                "topic": tunnel_topic,
+                "depth": new_depth,
+                "status": status,
+                "cave_ins": 0,
+            }
+            run["node_order"].append(node_id)
+            if status == "dug":
+                chosen_node_id = node_id
+
+        run["tunnels"] = None
+        run["_pending_stream"] = {
+            "node_id": chosen_node_id,
+            "parent_id": parent_node["id"],
+            "topic": chosen_tunnel,
+            "path": list(run["path"]),
+            "depth": new_depth,
+        }
+        return {"depth": new_depth, "topic": chosen_tunnel}
+
+    try:
+        raw_layer = llm_adapter.generate_layer(
+            topic=chosen_tunnel, path=run["path"], depth=new_depth
+        )
+    except Exception as exc:
+        return _llm_error(exc)
 
     chosen_node = None
     for i, tunnel_topic in enumerate(tunnels):
@@ -418,7 +412,6 @@ def dig_run(run_id: str, body: DigRequest):
     run["depth"] = new_depth
     run["tunnels"] = None
     run["path"].append(chosen_node["topic"])
-    _start_prefetch(run, chosen_node)
 
     return {
         "depth": new_depth,

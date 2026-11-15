@@ -39,19 +39,10 @@ from LLM import llm  # noqa: E402  (FAKE_LLM must be in os.environ before this i
 
 logger = logging.getLogger("rabbit_hole.llm_adapter")
 
-# Stopgap, not a tuning target: prefetching all 3 tunnels generates ~3x
-# what the player actually consumes, and that alone was enough to trip
-# the workspace's shared QPS limit during real gameplay. Dropped to 1 --
-# digging into tunnel 2 or 3 now falls back to live generation (slow, but
-# it works) instead of never happening. Prefetch is being replaced by
-# streaming entirely, so don't spend more effort tuning this further.
-PREFETCH_TUNNEL_COUNT = 1
-PREFETCH_STAGGER_SECONDS = 5.0
-
 # Shared by every call into the model (generate_layer, cave_in, and the
-# prefetch path): several people playing at once can trip the workspace's
-# shared per-minute rate limit, and a transient 429 from that shouldn't
-# surface as an error to the player who happened to hit it.
+# streaming pieces below): several people playing at once can trip the
+# workspace's shared per-minute rate limit, and a transient 429 from that
+# shouldn't surface as an error to the player who happened to hit it.
 RATE_LIMIT_MAX_ATTEMPTS = 3  # 1 try + 2 retries
 RATE_LIMIT_RETRY_BACKOFF_SECONDS = 1.5
 
@@ -248,39 +239,6 @@ def generate_details(topic: str, path: list, depth: int, explanation: str) -> di
 
 def question_view(question: dict) -> dict:
     return {"question": question["text"], "options": question["options"]}
-
-
-def _prefetch_one(tunnel: str, path: list, depth: int, start_delay: float) -> dict:
-    time.sleep(start_delay)
-    try:
-        return _call_generate_layer(tunnel, path, depth)
-    except Exception:
-        # Best-effort prefetch: dig_run already falls back to generating
-        # this tunnel live if it's missing here, so give up quietly after
-        # _call_generate_layer's own rate-limit retries are exhausted
-        # rather than retrying again on top of them.
-        logger.exception("prefetch for %r failed", tunnel)
-        return None
-
-
-def generate_ahead(path: list, depth: int, tunnels: list) -> dict:
-    """Pre-generates a subset of the tunnels' next layers (staggered, with
-    429 retry) instead of all of them at once. Returns {tunnel_name: raw
-    layer dict}; a tunnel this skips or fails is left out and generated
-    live by the caller when it's actually dug into.
-    """
-    chosen = tunnels[:PREFETCH_TUNNEL_COUNT]
-    results = {}
-    with ThreadPoolExecutor(max_workers=len(chosen)) as pool:
-        futures = {
-            pool.submit(_prefetch_one, tunnel, path, depth, i * PREFETCH_STAGGER_SECONDS): tunnel
-            for i, tunnel in enumerate(chosen)
-        }
-        for future, tunnel in futures.items():
-            layer = future.result()
-            if layer is not None:
-                results[tunnel] = layer
-    return results
 
 
 def turn_view(explanation: str, question: dict) -> dict:
