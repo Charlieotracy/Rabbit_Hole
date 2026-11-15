@@ -175,6 +175,50 @@ def cave_in(layer: dict, chosen_index: int, attempt: int) -> dict:
         return _with_rate_limit_retry(_cave_in_relaxed, layer, chosen_index, attempt)
 
 
+# --------------------------------------------------- streaming (per API.md)
+
+def generate_explanation(topic: str, path: list, depth: int):
+    """Streams the explanation as it's generated (her real stream_model()
+    token stream, not a simulated one). A rate limit before any chunk has
+    been yielded retries the whole thing from scratch (safe -- nothing
+    shown yet); one after some chunks were sent propagates instead, since
+    that content is already on screen and can't be cleanly retried."""
+    for attempt in range(1, RATE_LIMIT_MAX_ATTEMPTS + 1):
+        yielded_any = False
+        try:
+            for chunk in llm.generate_explanation(topic, path, depth):
+                yielded_any = True
+                yield chunk
+            return
+        except RateLimitError:
+            if yielded_any or attempt == RATE_LIMIT_MAX_ATTEMPTS:
+                raise
+            delay = RATE_LIMIT_RETRY_BACKOFF_SECONDS * attempt
+            logger.info(
+                "rate-limited before any explanation text was sent for %r "
+                "(attempt %d/%d), retrying in %.1fs", topic, attempt, RATE_LIMIT_MAX_ATTEMPTS, delay
+            )
+            time.sleep(delay)
+
+
+def generate_question(explanation: str, depth: int, missed_question: str = None) -> dict:
+    """Returns their checked question dict (text, options, answer_index).
+    Retries on a transient rate limit before giving up."""
+    return _with_rate_limit_retry(
+        llm.generate_question, explanation, depth, missed_question=missed_question
+    )
+
+
+def generate_details(topic: str, path: list, depth: int, explanation: str) -> dict:
+    """Returns {"artifact": {...}, "tunnels": [...]}. Retries on a
+    transient rate limit before giving up."""
+    return _with_rate_limit_retry(llm.generate_details, topic, path, depth, explanation)
+
+
+def question_view(question: dict) -> dict:
+    return {"question": question["text"], "options": question["options"]}
+
+
 def _prefetch_one(tunnel: str, path: list, depth: int, start_delay: float) -> dict:
     time.sleep(start_delay)
     try:

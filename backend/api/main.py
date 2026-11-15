@@ -1,12 +1,14 @@
+import json
 import logging
 import os
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from openai import RateLimitError
 from pydantic import BaseModel
 
@@ -35,6 +37,7 @@ def _startup() -> None:
 
 class RunRequest(BaseModel):
     topic: str
+    stream: bool = False
 
 
 class AnswerRequest(BaseModel):
@@ -52,16 +55,22 @@ def _get_run(run_id: str) -> dict:
     return run
 
 
+def _friendly_message(exc: Exception) -> str:
+    if isinstance(exc, RateLimitError):
+        return "The tunnel's busy — give it a moment and try again."
+    return "That tunnel collapsed. Try again?"
+
+
 def _llm_error(exc: Exception) -> JSONResponse:
     # The real exception (raw Databricks/openai error JSON included) is
     # logged here for debugging and never sent to the player -- they get
     # a short, in-theme message instead.
     logger.exception("LLM generation call failed")
-    if isinstance(exc, RateLimitError):
-        message = "The tunnel's busy — give it a moment and try again."
-    else:
-        message = "That tunnel collapsed. Try again?"
-    return JSONResponse(status_code=503, content={"error": message})
+    return JSONResponse(status_code=503, content={"error": _friendly_message(exc)})
+
+
+def _sse(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
 def _map_entry(node: dict) -> dict:
@@ -100,8 +109,58 @@ def _start_prefetch(run: dict, node: dict) -> None:
     threading.Thread(target=work, daemon=True).start()
 
 
+def _attach_streamed_node(run_id: str, run: dict, pending: dict, raw_layer: dict) -> dict:
+    """Finishes what create_run (or, later, dig_run) would have done
+    synchronously: builds the node from a layer that was just streamed,
+    drops it into the run exactly like the non-streaming path does, and
+    kicks off the same prefetch. Returns the new node."""
+    node_id = pending["node_id"]
+    node = {
+        "id": node_id,
+        "parent_id": pending["parent_id"],
+        "topic": raw_layer["topic"],
+        "depth": pending["depth"],
+        "status": "dug",
+        "cave_ins": 0,
+        "raw_layer": raw_layer,
+        "question": raw_layer["question"],
+    }
+    run["nodes"][node_id] = node
+    run["node_order"].append(node_id)
+    run["current_node_id"] = node_id
+    run["path"].append(raw_layer["topic"])
+    run.pop("_pending_stream", None)
+
+    if pending["parent_id"] is None:  # this is the run's root layer
+        run["topic"] = raw_layer["topic"]
+        storage.record_run_start(run_id, raw_layer["topic"])
+
+    _start_prefetch(run, node)
+    return node
+
+
 @app.post("/runs")
 def create_run(body: RunRequest):
+    if body.stream:
+        run_id = str(uuid.uuid4())
+        RUNS[run_id] = {
+            "topic": body.topic,
+            "depth": 1,
+            "tunnels": None,
+            "pending_layers": {},
+            "artifacts": [],
+            "nodes": {},
+            "node_order": [],
+            "current_node_id": None,
+            "cleared_node_ids": set(),
+            "next_node_num": 2,
+            "path": [],
+            "_pending_stream": {
+                "node_id": "n1", "parent_id": None, "topic": body.topic, "path": [], "depth": 1,
+            },
+        }
+        return {"run_id": run_id, "depth": 1, "topic": body.topic}
+
     try:
         raw_layer = llm_adapter.generate_layer(topic=body.topic, path=[], depth=1)
     except Exception as exc:
@@ -140,6 +199,58 @@ def create_run(body: RunRequest):
         "topic": raw_layer["topic"],
         "turn": llm_adapter.turn_view(raw_layer["explanation"], root_node["question"]),
     }
+
+
+@app.get("/runs/{run_id}/layer")
+def stream_layer(run_id: str):
+    run = _get_run(run_id)
+    pending = run.get("_pending_stream")
+    if pending is None:
+        raise HTTPException(status_code=400, detail="no layer generation pending for this run")
+
+    def events():
+        topic, path, depth = pending["topic"], pending["path"], pending["depth"]
+        explanation_parts = []
+        try:
+            for chunk in llm_adapter.generate_explanation(topic, path, depth):
+                explanation_parts.append(chunk)
+                yield _sse("text", {"delta": chunk})
+        except Exception as exc:
+            logger.exception("streamed explanation failed")
+            yield _sse("error", {"error": _friendly_message(exc), "explanation_shown": bool(explanation_parts)})
+            return
+
+        explanation = "".join(explanation_parts).strip()
+        yield _sse("explanation_committed", {"text": explanation})
+
+        try:
+            # Independent of each other -- same parallel pattern her own
+            # non-streaming generate_layer() uses for this step.
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                question_future = pool.submit(llm_adapter.generate_question, explanation, depth)
+                details_future = pool.submit(
+                    llm_adapter.generate_details, topic, path, depth, explanation
+                )
+                question, details = question_future.result(), details_future.result()
+        except Exception as exc:
+            logger.exception("streamed question/details failed")
+            yield _sse("error", {"error": _friendly_message(exc), "explanation_shown": True})
+            return
+
+        raw_layer = {
+            "topic": topic,
+            "depth": depth,
+            "explanation": explanation,
+            "question": question,
+            "artifact": details["artifact"],
+            "tunnels": details["tunnels"],
+        }
+        _attach_streamed_node(run_id, run, pending, raw_layer)
+
+        yield _sse("question", llm_adapter.question_view(question))
+        yield _sse("done", {})
+
+    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @app.post("/runs/{run_id}/answer")
