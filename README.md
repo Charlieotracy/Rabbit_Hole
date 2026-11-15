@@ -21,7 +21,7 @@ and collect an artifact at each layer.
 ## Setup
 
 ```bash
-git clone <repo-url>
+git clone <https://github.com/Charlieotracy/Rabbit_Hole>
 cd Rabbit_Hole
 
 python3 -m venv .venv
