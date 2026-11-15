@@ -132,8 +132,16 @@ def answer_run(run_id: str, body: AnswerRequest):
 
     attempt = node["cave_ins"]  # 0-based, before incrementing
     try:
+        # node["raw_layer"]["question"] is always the FIRST question, but
+        # chosen_index refers to the CURRENT question's options -- on a
+        # second cave-in that would tell the model the wrong question and
+        # the wrong chosen answer. Keep explanation/topic/etc. from the
+        # original layer (re-explain the same idea), swap in the current
+        # question (what the player actually just answered).
         result = llm_adapter.cave_in(
-            layer=node["raw_layer"], chosen_index=body.option_index, attempt=attempt
+            layer={**node["raw_layer"], "question": node["question"]},
+            chosen_index=body.option_index,
+            attempt=attempt,
         )
     except Exception as exc:
         return _llm_error(exc)

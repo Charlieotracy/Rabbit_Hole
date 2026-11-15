@@ -43,12 +43,31 @@ logger = logging.getLogger("rabbit_hole.llm_adapter")
 # calls (ask_model + the checker) -- 6 simultaneous calls, which trips
 # Databricks' free-tier QPS limit (429 REQUEST_LIMIT_EXCEEDED) and is
 # all-or-nothing: one rate-limited tunnel discards the other two's results.
-# We stagger each tunnel's start and retry a rate-limited one with a short
-# backoff instead, so occasional 429s get absorbed instead of losing layers.
+# We stagger each tunnel's start instead, so occasional 429s are less likely
+# in the first place; _with_rate_limit_retry below absorbs the ones that
+# still happen, on this and every other call into the model.
 PREFETCH_TUNNEL_COUNT = 3
 PREFETCH_STAGGER_SECONDS = 1.5
-PREFETCH_RETRY_BACKOFF_SECONDS = 1.5
-PREFETCH_MAX_ATTEMPTS = 3  # 1 try + 2 retries
+
+# Shared by every call into the model (generate_layer, cave_in, and the
+# prefetch path): several people playing at once can trip the workspace's
+# shared per-minute rate limit, and a transient 429 from that shouldn't
+# surface as an error to the player who happened to hit it.
+RATE_LIMIT_MAX_ATTEMPTS = 3  # 1 try + 2 retries
+RATE_LIMIT_RETRY_BACKOFF_SECONDS = 1.5
+
+
+def _with_rate_limit_retry(fn, *args, **kwargs):
+    for attempt in range(1, RATE_LIMIT_MAX_ATTEMPTS + 1):
+        try:
+            return fn(*args, **kwargs)
+        except RateLimitError as exc:
+            if attempt == RATE_LIMIT_MAX_ATTEMPTS:
+                raise
+            delay = RATE_LIMIT_RETRY_BACKOFF_SECONDS * attempt
+            logger.info("rate-limited (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt, RATE_LIMIT_MAX_ATTEMPTS, delay, exc)
+            time.sleep(delay)
 
 
 # Ruby is adding an optional `passages` argument to her generate_layer on
@@ -72,39 +91,43 @@ _retrieval_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="retrieva
 def _call_generate_layer(topic: str, path: list, depth: int) -> dict:
     retrieval_future = _retrieval_pool.submit(retrieval.retrieve, topic)
 
-    if not _GENERATE_LAYER_TAKES_PASSAGES:
-        return llm.generate_layer(topic=topic, path=path, depth=depth)
+    def _generate():
+        if not _GENERATE_LAYER_TAKES_PASSAGES:
+            return llm.generate_layer(topic=topic, path=path, depth=depth)
+        return llm.generate_layer(
+            topic=topic, path=path, depth=depth, passages=retrieval_future.result()
+        )
 
-    passages = retrieval_future.result()
-    return llm.generate_layer(topic=topic, path=path, depth=depth, passages=passages)
+    return _with_rate_limit_retry(_generate)
 
 
 def generate_layer(topic: str, path: list, depth: int) -> dict:
     """Returns their raw layer dict (topic, depth, explanation, question, artifact, tunnels).
     Retrieves grounding passages for the topic and passes them through if
-    their generate_layer accepts a `passages` argument."""
+    their generate_layer accepts a `passages` argument. Retries on a
+    transient rate limit before giving up."""
     return _call_generate_layer(topic, path, depth)
 
 
 def cave_in(layer: dict, chosen_index: int, attempt: int) -> dict:
-    """Returns their raw result dict (explanation, style, question)."""
-    return llm.cave_in(layer=layer, chosen_index=chosen_index, attempt=attempt)
+    """Returns their raw result dict (explanation, style, question).
+    Retries on a transient rate limit before giving up."""
+    return _with_rate_limit_retry(
+        llm.cave_in, layer=layer, chosen_index=chosen_index, attempt=attempt
+    )
 
 
 def _prefetch_one(tunnel: str, path: list, depth: int, start_delay: float) -> dict:
     time.sleep(start_delay)
-    for attempt in range(1, PREFETCH_MAX_ATTEMPTS + 1):
-        try:
-            return _call_generate_layer(tunnel, path, depth)
-        except RateLimitError:
-            if attempt == PREFETCH_MAX_ATTEMPTS:
-                logger.warning("prefetch for %r still rate-limited after %d tries", tunnel, attempt)
-                return None
-            logger.info("prefetch for %r rate-limited, retrying (attempt %d)", tunnel, attempt)
-            time.sleep(PREFETCH_RETRY_BACKOFF_SECONDS * attempt)
-        except Exception:
-            logger.exception("prefetch for %r failed", tunnel)
-            return None
+    try:
+        return _call_generate_layer(tunnel, path, depth)
+    except Exception:
+        # Best-effort prefetch: dig_run already falls back to generating
+        # this tunnel live if it's missing here, so give up quietly after
+        # _call_generate_layer's own rate-limit retries are exhausted
+        # rather than retrying again on top of them.
+        logger.exception("prefetch for %r failed", tunnel)
+        return None
 
 
 def generate_ahead(path: list, depth: int, tunnels: list) -> dict:
