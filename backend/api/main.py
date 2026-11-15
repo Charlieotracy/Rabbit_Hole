@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import uuid
 from typing import Dict
 
@@ -59,6 +60,38 @@ def _map_entry(node: dict) -> dict:
     return {field: node[field] for field in _MAP_FIELDS}
 
 
+def _start_prefetch(run: dict, node: dict) -> None:
+    """Kicks off generate_ahead for `node`'s tunnels in the background, as
+    soon as the layer exists -- its tunnels are already known then, well
+    before the player has even answered, let alone correctly. The player
+    then spends 20-40s reading, answering, and maybe caving in, which is
+    normally plenty of time for all three to land in run["pending_layers"]
+    before they actually reach /dig or a correct /answer.
+
+    `node["id"]` is used as a token: if a dig happens before an earlier
+    prefetch (for a node the run has since moved past) finishes, that
+    stale result must not land in pending_layers over a newer one, so a
+    late finisher checks the token is still current before writing."""
+    tunnels = node["raw_layer"]["tunnels"]
+    depth = node["depth"] + 1
+    token = node["id"]
+    run["pending_layers"] = {}
+    run["_prefetch_token"] = token
+
+    def work():
+        try:
+            result = llm_adapter.generate_ahead(path=run["path"], depth=depth, tunnels=tunnels)
+        except Exception:
+            logger.exception("generate_ahead prefetch failed; dig will fall back to live generation")
+            result = {}
+        if run.get("_prefetch_token") == token:
+            run["pending_layers"] = result
+        else:
+            logger.info("discarding stale prefetch for %r; run has moved past it", node["topic"])
+
+    threading.Thread(target=work, daemon=True).start()
+
+
 @app.post("/runs")
 def create_run(body: RunRequest):
     try:
@@ -92,6 +125,7 @@ def create_run(body: RunRequest):
         "path": [raw_layer["topic"]],
     }
     storage.record_run_start(run_id, raw_layer["topic"])
+    _start_prefetch(RUNS[run_id], root_node)
     return {
         "run_id": run_id,
         "depth": 1,
@@ -117,17 +151,9 @@ def answer_run(run_id: str, body: AnswerRequest):
         storage.record_answer(
             run_id, node["id"], node["topic"], node["depth"], body.option_index, True
         )
-        # Pre-generate the next layer for all three tunnels in parallel so
-        # digging feels instant; any tunnel this misses (including all three,
-        # if this call itself fails) is generated live in dig_run instead,
-        # so a prefetch failure must never cost the player this artifact.
-        try:
-            run["pending_layers"] = llm_adapter.generate_ahead(
-                path=run["path"], depth=node["depth"] + 1, tunnels=tunnels
-            )
-        except Exception:
-            logger.exception("generate_ahead prefetch failed; falling back to live dig")
-            run["pending_layers"] = {}
+        # The prefetch for these tunnels was already kicked off in the
+        # background back when this layer was created (create_run or
+        # dig_run) -- nothing to wait on here, so this returns immediately.
         return {"correct": True, "artifact": artifact, "tunnels": tunnels}
 
     attempt = node["cave_ins"]  # 0-based, before incrementing
@@ -208,8 +234,8 @@ def dig_run(run_id: str, body: DigRequest):
     run["current_node_id"] = chosen_node["id"]
     run["depth"] = new_depth
     run["tunnels"] = None
-    run["pending_layers"] = {}
     run["path"].append(chosen_node["topic"])
+    _start_prefetch(run, chosen_node)
 
     return {
         "depth": new_depth,
