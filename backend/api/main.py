@@ -7,6 +7,7 @@ from typing import Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from openai import RateLimitError
 from pydantic import BaseModel
 
 from . import llm_adapter, storage
@@ -52,8 +53,15 @@ def _get_run(run_id: str) -> dict:
 
 
 def _llm_error(exc: Exception) -> JSONResponse:
+    # The real exception (raw Databricks/openai error JSON included) is
+    # logged here for debugging and never sent to the player -- they get
+    # a short, in-theme message instead.
     logger.exception("LLM generation call failed")
-    return JSONResponse(status_code=503, content={"error": str(exc)})
+    if isinstance(exc, RateLimitError):
+        message = "The tunnel's busy — give it a moment and try again."
+    else:
+        message = "That tunnel collapsed. Try again?"
+    return JSONResponse(status_code=503, content={"error": message})
 
 
 def _map_entry(node: dict) -> dict:

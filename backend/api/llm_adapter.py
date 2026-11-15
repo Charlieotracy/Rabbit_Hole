@@ -39,15 +39,17 @@ from LLM import llm  # noqa: E402  (FAKE_LLM must be in os.environ before this i
 
 logger = logging.getLogger("rabbit_hole.llm_adapter")
 
-# llm.generate_ahead() fires all 3 tunnels at once, each making up to 2 model
-# calls (ask_model + the checker) -- 6 simultaneous calls, which trips
-# Databricks' free-tier QPS limit (429 REQUEST_LIMIT_EXCEEDED) and is
-# all-or-nothing: one rate-limited tunnel discards the other two's results.
-# We stagger each tunnel's start instead, so occasional 429s are less likely
-# in the first place; _with_rate_limit_retry below absorbs the ones that
-# still happen, on this and every other call into the model.
+# llm.generate_ahead() fires all 3 tunnels at once, each making up to
+# MAX_TRIES generation attempts x (1 generation call + up to 2 checker
+# calls) -- real gameplay was tripping the workspace's shared QPS limit,
+# since this one prefetch alone can generate ~3x what the player actually
+# ends up seeing. The player spends 20-40s reading/answering/caving in
+# before a dig or the next correct answer needs these, so there's room to
+# spread the three tunnels' starts out well past what just avoiding a
+# single burst would need. Tune this constant directly if the limit is
+# still being hit, or lower it if prefetches are finishing too late.
 PREFETCH_TUNNEL_COUNT = 3
-PREFETCH_STAGGER_SECONDS = 1.5
+PREFETCH_STAGGER_SECONDS = 5.0
 
 # Shared by every call into the model (generate_layer, cave_in, and the
 # prefetch path): several people playing at once can trip the workspace's
