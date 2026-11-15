@@ -1,9 +1,20 @@
-/* ---------- Chat layout: sticky bunny on the left, messages on the right ---------- */
+/* ---------- Run layout: the page fills the screen and doesn't scroll ---------- */
+/* Top bar, then the chat filling the rest. The chat's own log scrolls. */
+.app.run {
+  height: 100vh;
+  height: 100dvh;
+  padding-bottom: 16px;
+  gap: 12px;
+}
+
+/* ---------- Chat: bunny pinned bottom-left, messages stacked above ---------- */
 .chat {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
   gap: 14px;
-  align-items: start;
+  align-items: end;
   /* Wait for the camera to finish most of its descent (set per layer). */
   animation: chat-in 0.55s ease var(--enter-delay, 0.8s) both;
 }
@@ -14,22 +25,27 @@
 }
 
 .chat__avatar {
-  position: sticky;
-  top: 96px;
   display: flex;
   justify-content: center;
-  padding-top: 4px;
+  padding-bottom: 10px;
 }
 
+/* column-reverse: starts scrolled to the newest message (at the bottom) and
+   new messages push the older ones up. Older ones fade out toward the top. */
 .chat__log {
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   gap: 14px;
+  height: 100%;
   min-width: 0;
-  padding-bottom: 24px;
+  overflow-y: auto;
+  padding: 72px 4px 10px 40px;
+  margin-left: -40px; /* room for the newest bubble's tail without clipping it */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 244, 220, 0.35) transparent;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 110px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 110px);
 }
-
-.chat__end { height: 1px; }
 
 @media (max-width: 640px) {
   .chat {
@@ -39,31 +55,33 @@
   .chat__avatar .bunny__sprite { width: 48px; height: auto; }
 }
 
+/* Each message dims with age (how many came after it). */
+.chat__item {
+  flex: none;
+  opacity: calc(1 - min(var(--age, 0), 3) * 0.17);
+  transition: opacity 0.4s ease;
+}
+
+/* New messages grow in from zero height, sliding the older ones up. Only
+   the top and bottom are clipped while growing, so the tail (which sticks
+   out to the left) stays attached the whole time. */
+.enter {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.enter.is-entering { animation: enter-grow 0.35s ease-out; }
+.enter.is-entering > .enter__inner { clip-path: inset(0 -80px 0 -80px); }
+.enter__inner { min-height: 0; }
+
+@keyframes enter-grow {
+  from { grid-template-rows: 0fr; opacity: 0; }
+  to { grid-template-rows: 1fr; opacity: 1; }
+}
+
 /* ---------- Messages ---------- */
-.msg {
-  max-width: 100%;
-  animation: msg-in 0.22s ease-out backwards;
-  transition: opacity 0.3s ease;
-}
-
-@keyframes msg-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.msg--old { opacity: 0.55; }
-
-.msg--bunny {
-  align-self: flex-start;
-  width: min(100%, 620px);
-}
-
-.msg--player {
-  align-self: flex-end;
-  max-width: min(80%, 480px);
-}
-
-.msg--player .bubble__body { padding: 12px 18px; }
+.msg--bunny { width: min(100%, 620px); }
+.msg--typing { width: auto; }
 
 .msg__text {
   margin: 0;
@@ -80,43 +98,21 @@
   line-height: 1.35;
 }
 
-.msg--player .msg__text { font-weight: 700; }
-
-.msg__badge {
-  margin: 4px 0 0;
-  font-family: var(--font-display);
-  font-size: 0.8rem;
-  font-weight: 600;
+/* Buttons that live inside a bunny bubble (Ready, surface confirm). */
+.bubble-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  animation: fade-up 0.3s ease-out both;
 }
-
-.msg--wrong .bubble { --bubble-line: var(--berry); }
-.msg--wrong .msg__badge { color: var(--berry); }
-.msg--right .bubble { --bubble-line: var(--leaf); --bubble-fill: #e3f3d6; }
-.msg--right .msg__badge { color: var(--leaf); }
-
-/* Answer chips and other quick replies line up on the player's side. */
-.msg--replies {
-  align-self: flex-end;
-  display: grid;
-  gap: 8px;
-  width: min(100%, 520px);
-}
-
-.msg--replies .pbtn { width: 100%; margin-bottom: 3px; }
-
-/* A single reply (like "Ready for a question?") sits compactly on the right. */
-.msg--replies:has(> .pbtn:only-child) { width: auto; }
-.msg--replies > .pbtn:only-child { width: auto; padding: 0.7em 1.4em; }
 
 /* ---------- Typing indicator ---------- */
 .typing .bubble__body {
   display: flex;
   align-items: center;
-  gap: 12px;
   padding: 14px 20px;
 }
-
-.msg--bunny:has(.typing) { width: auto; }
 
 .typing__dots {
   display: inline-flex;
@@ -145,7 +141,7 @@
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
-  animation: msg-in 0.22s ease-out backwards;
+  animation: fade-up 0.25s ease-out both;
 }
 
 .option {
@@ -178,12 +174,13 @@
 .option--right { background: #e3f3d6; border-color: var(--leaf); }
 .option--wrong { background: #f8dcd8; border-color: var(--berry); }
 
-/* ---------- Tunnel picker: three tunnel mouths in the dirt ---------- */
-.msg--tunnels {
+/* ---------- Tunnel picker: three tunnel mouths under the bunny's message ---------- */
+.tunnels {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-  width: 100%;
+  margin-top: 14px;
+  animation: fade-up 0.3s ease-out both;
 }
 
 .tunnel {
@@ -196,7 +193,7 @@
   border: 0;
   color: inherit;
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, opacity 0.3s ease;
 }
 
 .tunnel__arch {
@@ -222,26 +219,28 @@
 .tunnel:hover:not(:disabled) { transform: translateY(-4px); }
 
 .tunnel:hover:not(:disabled) .tunnel__arch,
-.tunnel:focus-visible .tunnel__arch {
+.tunnel:focus-visible .tunnel__arch,
+.tunnel--chosen .tunnel__arch {
   filter: drop-shadow(0 5px 0 rgba(20, 12, 8, 0.45)) drop-shadow(0 0 10px rgba(255, 210, 120, 0.7));
 }
 
 .tunnel:active:not(:disabled) .tunnel__label { transform: translateY(4px); box-shadow: none; }
 
-.tunnel:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+.tunnel:disabled { cursor: default; }
+.tunnel--chosen .tunnel__label { background: #ffe2c2; }
+.tunnel--other { opacity: 0.4; }
 
 @media (max-width: 640px) {
-  .msg--tunnels { grid-template-columns: 1fr; }
-  .tunnel { flex-direction: row; justify-content: flex-start; }
-  .tunnel__arch { width: 72px; }
+  .tunnels { grid-template-columns: 1fr; gap: 8px; }
+  .tunnel { flex-direction: row; justify-content: flex-start; padding: 2px; }
+  .tunnel__arch { width: 64px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .chat,
-  .msg,
-  .options { animation-duration: 0.01s; animation-delay: 0s; }
+  .enter.is-entering,
+  .options,
+  .tunnels,
+  .bubble-actions { animation-duration: 0.01s; animation-delay: 0s; }
   .typing__dots i { animation: none; }
 }

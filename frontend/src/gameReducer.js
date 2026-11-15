@@ -19,7 +19,7 @@ export const initialState = {
   depth: 0, // 0 = surface
   path: [], // topic of every layer dug, in order
   attempts: [], // current layer: [{ turn, ready, chosen, result }]
-  breakthrough: null, // { artifact, tunnels, stage: 'dig' | 'reveal', chosen }
+  breakthrough: null, // { artifact, tunnels, stage: 'dig' (cheering pause) | 'reveal' (tunnels shown), chosen }
   history: [], // cleared layers: [{ depth, topic, caveIns }]
   pending: null, // 'start' | 'answer' | 'dig' | 'surface'
   confirmingSurface: false,

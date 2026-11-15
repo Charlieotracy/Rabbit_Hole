@@ -126,7 +126,9 @@
   66%, 100% { transform: translate(-50%, 50%) scaleX(1); }
 }
 
-.bunny--motion-rise .bunny__body { animation: bunny-rise 0.5s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+.bunny--motion-rise .bunny__body {
+  animation: bunny-rise 0.5s cubic-bezier(0.3, 1.5, 0.5, 1) var(--rise-delay, 0s) both;
+}
 
 @keyframes bunny-rise {
   from { transform: translateY(112%); }

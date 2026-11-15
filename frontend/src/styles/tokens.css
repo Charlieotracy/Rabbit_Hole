@@ -28,7 +28,8 @@
   --blush: #f2a7b0;
 
   /* Type */
-  --font-display: 'Pixelify Sans', system-ui, sans-serif; /* title, labels, buttons */
+  --font-logo: 'Pixelify Sans', system-ui, sans-serif; /* the "Rabbit Hole" logo only */
+  --font-display: 'Fredoka', system-ui, sans-serif; /* labels, buttons, numbers */
   --font-body: 'Nunito', system-ui, sans-serif; /* bubble text */
 
   /* Pixel unit for stepped corners, outlines and hard shadows */

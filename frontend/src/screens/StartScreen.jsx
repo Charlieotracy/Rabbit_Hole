@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { errorLine, GREETING, startReply } from '../lib/lines'
 import Bunny from '../scene/sprites/Bunny'
-import { Burrow, Carrot } from '../scene/sprites/props'
+import { Carrot } from '../scene/sprites/props'
 import Bubble from '../ui/Bubble'
 import PixelButton from '../ui/PixelButton'
 import Title from '../ui/Title'
@@ -86,7 +86,6 @@ export default function StartScreen({ game }) {
         <span className="start__bunny">
           <Bunny mood={bunnyMood} motion={bunnyMotion} />
         </span>
-        <Burrow className="start__burrow" />
       </div>
     </section>
   )

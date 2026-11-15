@@ -4,7 +4,7 @@ import { mirror, pixelRects, transpose } from '../scene/sprites/pixel'
 // Speech bubble: cream fill, ink outline with rounded pixel corners, hard shadow.
 //
 // variant: "bunny" (default) | "player" | "cave" | "artifact" | "plain"
-// tail:    "none" (default) | "down" | "left" | "right"
+// tail:    "none" (default) | "down" | "left" | "left-low" (near the bottom) | "right"
 // round:   "lg" (big pixel-circle corners, for the bunny's main speech bubbles)
 //          | "md" (default) | "sm" (small, for the HUD)
 // label:   optional small heading inside, e.g. "LAYER 2 · EVENT HORIZON"
@@ -16,9 +16,11 @@ const CORNERS = {
   sm: steppedCorners([3, 2, 1]),
 }
 
-// Tail drawn pointing down-left. Row 0 overlaps the bubble's bottom outline
-// so the fill runs straight into the tail. L = outline, F = fill.
+// Tail drawn pointing down-left. The first two rows overlap the bubble (one
+// row of fill inside it, then its outline), so the fill runs straight into
+// the tail and no zoom level can open a gap between them. L = outline, F = fill.
 const TAIL_DOWN = [
+  'FFFFFFFFFF',
   'LFFFFFFFFL',
   'LFFFFFFFL.',
   'LFFFFFFL..',
@@ -30,7 +32,9 @@ const TAIL_DOWN = [
   'LL........',
 ]
 const TAIL_RIGHT = transpose(TAIL_DOWN)
-const TAILS = { down: TAIL_DOWN, right: TAIL_RIGHT, left: mirror(TAIL_RIGHT) }
+const TAIL_LEFT = mirror(TAIL_RIGHT)
+// Same tail flipped upside down, for a bubble whose speaker is below-left of it.
+const TAILS = { down: TAIL_DOWN, right: TAIL_RIGHT, left: TAIL_LEFT, 'left-low': [...TAIL_LEFT].reverse() }
 const TAIL_PALETTE = { L: 'var(--bubble-line)', F: 'var(--bubble-fill)' }
 
 function Tail({ side }) {
