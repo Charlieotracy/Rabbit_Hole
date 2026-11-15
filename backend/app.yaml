@@ -7,6 +7,9 @@ command: ["python", "-m", "api.main"]
 env:
   - name: MODEL_ENDPOINT
     value: "databricks-gpt-oss-120b"
+  # The checker judges the generator's questions on a different model family.
+  - name: CHECKER_MODEL_ENDPOINT
+    value: "databricks-qwen35-122b-a10b"
   - name: DATABRICKS_HOST
     value: "dbc-bc753968-b390.cloud.databricks.com"
   - name: DATABRICKS_HTTP_PATH

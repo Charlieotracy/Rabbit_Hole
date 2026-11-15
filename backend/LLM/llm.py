@@ -1,9 +1,12 @@
 """The LLM part of Rabbit Hole: prompts, model calls, parsing, and checking.
 
 Everything the player reads comes from the functions in this file:
-  generate_layer()  -> a new layer (explanation, question, artifact, tunnels)
-  cave_in()         -> a re-explanation and new question after a wrong answer
-  generate_ahead()  -> next layers for all three tunnels, in parallel
+  generate_explanation()          -> streams a layer's explanation text
+  generate_question()             -> a checked question for an explanation
+  generate_details()              -> a layer's artifact and three tunnels
+  generate_cave_in_explanation()  -> streams a re-explanation after a wrong answer
+  generate_layer() / cave_in()    -> the same pieces run together, not streamed
+  generate_ahead()                -> next layers for all three tunnels, in parallel
 
 Set FAKE_LLM=1 to get canned layers without calling the model (handy for the
 frontend person, and for testing the routes before the endpoint is ready).
@@ -28,14 +31,15 @@ STYLES = ["analogy", "concrete example", "step by step"]
 ICONS = ["fossil", "scroll", "gear", "telescope", "flask", "book",
          "map", "gem", "camera", "atom", "leaf", "coin"]
 
-SYSTEM = (
+_SYSTEM_BASE = (
     "You write content for Rabbit Hole, a learning game where players dig into a "
     "topic one layer at a time and must answer a question to go deeper. "
     "The level rises as the player digs: it starts at middle school and ends at "
     "college. Follow the level asked for at each depth. At every level, teach one "
-    "idea at a time and explain any term the player has not met yet. "
-    "Reply with a single JSON object and nothing else."
+    "idea at a time and explain any term the player has not met yet."
 )
+SYSTEM = _SYSTEM_BASE + " Reply with a single JSON object and nothing else."  # JSON calls
+SYSTEM_TEXT = _SYSTEM_BASE + " Reply with plain text only."  # streamed explanations
 
 
 # ---------------------------------------------------------------- model calls
@@ -58,25 +62,30 @@ def _get_client():
 # and use the endpoint's default. Generation always uses the default.
 CHECKER_REASONING_EFFORT = os.environ.get("CHECKER_REASONING_EFFORT", "low").strip() or None
 
-# Flipped off the first time the endpoint refuses reasoning_effort, so one
-# unsupported setting doesn't break every call after it.
-_reasoning_effort_supported = True
+# The checker runs on a different model from the generator, so it doesn't
+# share the generator's blind spots when judging its questions. Set
+# CHECKER_MODEL_ENDPOINT to a serving endpoint in the same workspace; if it is
+# unset, the checker uses MODEL.
+CHECKER_MODEL = os.environ.get("CHECKER_MODEL_ENDPOINT", "").strip() or MODEL
+
+# Endpoints that refused reasoning_effort, so it is not sent to them again.
+_no_reasoning_effort = set()
 
 
-def ask_model(prompt, temperature=0.7, reasoning_effort=None):
-    """Send one prompt to the model and return its reply as plain text.
-    `reasoning_effort` asks a reasoning model to think less or more; None
-    leaves it at the endpoint's default."""
-    global _reasoning_effort_supported
+def ask_model(prompt, temperature=0.7, reasoning_effort=None, model=None):
+    """Send one prompt to a model and return its reply as plain text.
+    `model` is the serving endpoint (default MODEL). `reasoning_effort` asks a
+    reasoning model to think less or more; None leaves the endpoint default."""
+    model = model or MODEL
     kwargs = dict(
-        model=MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": prompt},
         ],
         temperature=temperature,
     )
-    if reasoning_effort and _reasoning_effort_supported:
+    if reasoning_effort and model not in _no_reasoning_effort:
         try:
             response = _get_client().chat.completions.create(
                 reasoning_effort=reasoning_effort, **kwargs)
@@ -85,20 +94,41 @@ def ask_model(prompt, temperature=0.7, reasoning_effort=None):
             from openai import BadRequestError
             if not isinstance(e, BadRequestError):
                 raise
-            _reasoning_effort_supported = False
-            logger.warning("endpoint refused reasoning_effort=%r (%s); "
-                           "sending calls without it from now on", reasoning_effort, e)
+            _no_reasoning_effort.add(model)
+            logger.warning("endpoint %s refused reasoning_effort=%r (%s); "
+                           "sending its calls without it from now on", model, reasoning_effort, e)
     response = _get_client().chat.completions.create(**kwargs)
     return text_from_content(response.choices[0].message.content)
 
 
-def text_from_content(content):
-    """Most models reply with one string. Reasoning models can reply with a list
-    of parts (a thinking part, then the answer part). Keep only the answer text."""
+def stream_model(prompt, temperature=0.7, model=None):
+    """Send one prompt and yield the plain-text reply in chunks as it arrives.
+    The request is only sent once the caller starts iterating."""
+    stream = _get_client().chat.completions.create(
+        model=model or MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_TEXT},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=temperature,
+        stream=True,
+    )
+    for chunk in stream:
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            continue
+        text = _answer_text(getattr(choices[0].delta, "content", None))
+        if text:
+            yield text
+
+
+def _answer_text(content):
+    """The answer text in a reply or a streamed chunk. Reasoning models can send
+    a list of parts (thinking parts, then answer parts); keep only the answer."""
     if isinstance(content, str):
         return content
+    texts = []
     if isinstance(content, list):
-        texts = []
         for part in content:
             if isinstance(part, dict):
                 kind, text = part.get("type"), part.get("text")
@@ -106,8 +136,17 @@ def text_from_content(content):
                 kind, text = getattr(part, "type", None), getattr(part, "text", None)
             if kind == "text" and text:
                 texts.append(text)
-        if texts:
-            return "".join(texts)
+    return "".join(texts)
+
+
+def text_from_content(content):
+    """Most models reply with one string. Reasoning models can reply with a list
+    of parts (a thinking part, then the answer part). Keep only the answer text."""
+    if isinstance(content, str):
+        return content
+    text = _answer_text(content)
+    if text:
+        return text
     raise ValueError(f"Unexpected reply format: {content!r}")
 
 
@@ -149,14 +188,19 @@ def validate_layer(layer):
     _require(isinstance(layer, dict), "layer must be an object")
     _validate_explanation(layer.get("explanation"))
     _validate_question(layer.get("question"))
+    _validate_details(layer)
 
-    artifact = layer.get("artifact")
+
+def _validate_details(details):
+    """The artifact and tunnels, from generate_details or a whole layer."""
+    _require(isinstance(details, dict), "reply must be a JSON object")
+    artifact = details.get("artifact")
     _require(isinstance(artifact, dict) and isinstance(artifact.get("name"), str),
              "artifact.name missing")
     if artifact.get("icon") not in ICONS:
         artifact["icon"] = "gem"  # unknown icon: fall back instead of failing
 
-    tunnels = layer.get("tunnels")
+    tunnels = details.get("tunnels")
     _require(isinstance(tunnels, list) and len(tunnels) == 3
              and all(isinstance(t, str) and t.strip() for t in tunnels),
              "tunnels must be 3 strings")
@@ -254,10 +298,32 @@ def _options_text(q):
     return "\n".join(f"{i}. {o}" for i, o in enumerate(q["options"]))
 
 
+# Set if CHECKER_MODEL turns out not to exist or not be usable, so the checker
+# falls back to MODEL instead of failing every question.
+_checker_fallback = False
+
+
+def _checker_model_reply(prompt):
+    global _checker_fallback
+    from openai import NotFoundError, PermissionDeniedError
+
+    model = MODEL if _checker_fallback else CHECKER_MODEL
+    try:
+        return ask_model(prompt, temperature=0, model=model,
+                         reasoning_effort=CHECKER_REASONING_EFFORT)
+    except (NotFoundError, PermissionDeniedError) as e:
+        if model == MODEL:
+            raise
+        _checker_fallback = True
+        logger.warning("checker endpoint %s is not usable (%s); checking with %s instead",
+                       CHECKER_MODEL, e, MODEL)
+        return ask_model(prompt, temperature=0, model=MODEL,
+                         reasoning_effort=CHECKER_REASONING_EFFORT)
+
+
 def _ask_checker(prompt):
     try:
-        reply = extract_json(ask_model(prompt, temperature=0,
-                                       reasoning_effort=CHECKER_REASONING_EFFORT))
+        reply = extract_json(_checker_model_reply(prompt))
     except (ValueError, json.JSONDecodeError) as e:
         raise CheckerError(f"unreadable checker reply: {e}") from e
     if not isinstance(reply, dict):
@@ -329,9 +395,17 @@ def with_feedback(prompt, feedback):
 
 
 # ----------------------------------------------------------------- the layer
+#
+# A layer is made in pieces, so the explanation can be shown while it is
+# still being written:
+#   generate_explanation()  streams the lesson text (plain text, no JSON)
+#   generate_question()     writes the quiz question for that text, checked
+#   generate_details()      picks the artifact and the three tunnels
+# generate_layer() runs all three and returns the whole layer at once, for
+# callers that don't stream. Cave-ins are split the same way.
 
-# Shared by LAYER_PROMPT and CAVE_IN_PROMPT. No curly braces in here: it is
-# pasted into strings that go through str.format().
+# Used by QUESTION_PROMPT. No curly braces in here: it is pasted into strings
+# that go through str.format().
 QUESTION_RULES = """Question rules:
 - Never ask the player to just find a phrase from the explanation.
 - Exactly one option is correct, and someone who understood the explanation can
@@ -350,48 +424,64 @@ QUESTION_RULES = """Question rules:
   "none of the above", and no giveaway words like "always" or "never" that only
   appear in wrong options."""
 
+# Cave-in explanations often use an analogy or example; the question must still
+# test the idea itself. Harmless for normal layers, so it is always included.
+CONCEPT_RULES = """- If the lesson uses an analogy or example, the question tests the real idea,
+  not the analogy or example. The question and all four options are about the
+  topic itself, in its real terms: do not mention the analogy's or example's
+  characters, objects, or details, and do not ask what part of it stands for
+  what. Someone who understood the idea but skipped the analogy or example must
+  still be able to answer it."""
+
 # How hard a layer is, by depth. Each tier asks for a different kind of
 # question, so going deeper changes what the player has to do, not just the
-# subject. No curly braces in here (pasted into str.format() templates).
+# subject. The explanation call gets the language and explanation guidance;
+# the question call gets the question type and wrong-option guidance.
+# No curly braces in here (pasted into str.format() templates).
 DIFFICULTY_TIERS = [
-    # (deepest depth this tier covers, student level, description)
-    (2, "middle school", """Difficulty: SURFACE (depth 1-2). Level: MIDDLE SCHOOL (ages 11-14).
-- Language: short sentences and everyday words. Assume no background beyond
+    # (deepest depth this tier covers, student level, header,
+    #  explanation guidance, question guidance)
+    (2, "middle school",
+     "Difficulty: SURFACE (depth 1-2). Level: MIDDLE SCHOOL (ages 11-14).",
+     """- Language: short sentences and everyday words. Assume no background beyond
   what a middle schooler knows; explain every technical term.
-- Explanation: introduce the idea in everyday words with one simple example.
-- Question type: check the player understood the core idea. Describe a simple,
+- Explanation: introduce the idea in everyday words with one simple example.""",
+     """- Question type: check the player understood the core idea. Describe a simple,
   new example (not the one in the explanation) and ask what it shows, or ask
   which statement correctly describes the idea.
 - Wrong options: common beginner misconceptions. A careful reader rules them
   out quickly."""),
-    (4, "high school", """Difficulty: SHALLOW (depth 3-4). Level: HIGH SCHOOL.
-- Language: what a good high school class would use. Basic subject terms are
+    (4, "high school",
+     "Difficulty: SHALLOW (depth 3-4). Level: HIGH SCHOOL.",
+     """- Language: what a good high school class would use. Basic subject terms are
   fine once introduced; simple numbers or cause-and-effect chains are expected.
 - Explanation: go past the basics; name the mechanism or the rule behind the
-  idea, not just what happens.
-- Question type: apply the idea. Give a short scenario the explanation did not
+  idea, not just what happens.""",
+     """- Question type: apply the idea. Give a short scenario the explanation did not
   mention and ask the player to predict what happens or choose what to do.
 - Wrong options: near misses that would be right if one detail of the rule
   were different."""),
-    (6, "first-year college", """Difficulty: DEEP (depth 5-6). Level: INTRO COLLEGE (first-year course).
-- Language: proper subject vocabulary, used precisely. Assume the player
+    (6, "first-year college",
+     "Difficulty: DEEP (depth 5-6). Level: INTRO COLLEGE (first-year course).",
+     """- Language: proper subject vocabulary, used precisely. Assume the player
   remembers the earlier layers on their path; define new terms briefly.
 - Explanation: cover the reason why, including a limit, exception, or
-  condition where the idea stops working.
-- Question type: reason about cause, condition, or exception. Ask why something
+  condition where the idea stops working.""",
+     """- Question type: reason about cause, condition, or exception. Ask why something
   happens, what would change if one factor changed, or which situation the idea
   does NOT apply to.
 - Wrong options: all sound expert. Each is a real, related effect or a correct
   statement about a neighboring idea, so only someone who grasped the exact
   reason can pick the right one."""),
-    (None, "upper-level college", """Difficulty: CORE (depth 7 and below). Level: COLLEGE (upper-level course).
-- Language: the precise terms and distinctions a college course in this
+    (None, "upper-level college",
+     "Difficulty: CORE (depth 7 and below). Level: COLLEGE (upper-level course).",
+     """- Language: the precise terms and distinctions a college course in this
   subject would use. Still define anything not covered earlier on the path.
 - Explanation: treat the player as a strong learner; give the precise version
   of the idea, including how it connects to an earlier topic on their path.
-  Include every fact the question needs, so it is still answerable from this
-  explanation alone.
-- Question type: multi-step reasoning. The player must combine two facts from
+  State every fact a two-step reasoning question would need, so a question
+  about it can be answered from this explanation alone.""",
+     """- Question type: multi-step reasoning. The player must combine two facts from
   the explanation, or follow a chain of cause and effect two steps, to reach the
   answer. A single fact alone must not be enough.
 - Wrong options: each is the answer you reach if you skip one step, apply the
@@ -405,39 +495,72 @@ def _tier_for(depth):
             return tier
 
 
-def difficulty_for(depth):
-    return _tier_for(depth)[2]
-
-
 def level_for(depth):
     return _tier_for(depth)[1]
 
 
-# What a layer's explanation covers. The first layer is a broad overview of the
-# whole topic; every layer after it zooms in on one specific part.
+def explanation_difficulty(depth):
+    tier = _tier_for(depth)
+    return tier[2] + "\n" + tier[3]
+
+
+def question_difficulty(depth):
+    tier = _tier_for(depth)
+    return tier[2] + "\n" + tier[4]
+
+
+# What a layer covers. The first layer is a broad overview of the whole topic;
+# every layer after it zooms in on one specific part.
 FOCUS_OVERVIEW = """Focus: OVERVIEW. This is the first layer, so give a basic summary of
 {topic} as a whole: what it is, the one or two big ideas behind it, and why it
-matters. Do not zoom in on one detail yet.
-- Question: check the player got the big picture (what the topic is or its main
-  idea), not a specific fact.
-- Tunnels: three main parts or branches of {topic}, each a clear step more
-  specific than this overview."""
+matters. Do not zoom in on one detail yet."""
 
 FOCUS_ZOOM = """Focus: ZOOM IN. {topic} is a more specific part of {parent}.
 Teach ONE specific idea about {topic}; do not summarize {parent} again or give
-a general overview.
-- Tunnels: three narrower parts of {topic}, each more specific than this layer."""
+a general overview."""
+
+QUESTION_FOCUS_OVERVIEW = """Focus: this lesson is an overview of the whole topic. Check the player got
+the big picture (what the topic is or its main idea), not a specific fact."""
+
+QUESTION_FOCUS_ZOOM = "Focus: check the ONE specific idea this lesson teaches."
+
+TUNNELS_OVERVIEW = """Tunnels: three main parts or branches of {topic}, each a clear step more
+specific than this overview."""
+
+TUNNELS_ZOOM = "Tunnels: three narrower parts of {topic}, each more specific than this layer."
+
+
+def _is_overview(path, depth):
+    return depth <= 1 or not path
 
 
 def focus_for(topic, path, depth):
-    if depth <= 1 or not path:
+    if _is_overview(path, depth):
         return FOCUS_OVERVIEW.format(topic=topic)
     return FOCUS_ZOOM.format(topic=topic, parent=path[-1])
 
 
-LAYER_PROMPT = """The player is digging into: {root}
+def question_focus_for(depth):
+    return QUESTION_FOCUS_OVERVIEW if depth <= 1 else QUESTION_FOCUS_ZOOM
+
+
+def tunnels_focus_for(topic, path, depth):
+    template = TUNNELS_OVERVIEW if _is_overview(path, depth) else TUNNELS_ZOOM
+    return template.format(topic=topic)
+
+
+def _context(topic, path):
+    """The where-are-we fields shared by the explanation and details prompts."""
+    return {
+        "root": path[0] if path else topic,
+        "path": " -> ".join(path) if path else "(this is the first layer)",
+        "covered": ", ".join(path) if path else "nothing yet",
+    }
+
+
+EXPLANATION_PROMPT = """The player is digging into: {root}
 Path so far: {path}
-Next layer topic: {topic}
+This layer's topic: {topic}
 Depth: {depth} (1 is the surface; deeper layers must be harder)
 Already covered, do not repeat: {covered}
 
@@ -445,14 +568,51 @@ Already covered, do not repeat: {covered}
 
 {difficulty}
 
-Write this layer as JSON with exactly these fields:
+Write this layer's explanation: at most 100 words, following the Focus above.
+A quiz question will be written from it afterwards, so state the idea clearly
+enough that it can be tested from this text alone.
+Reply with the explanation text only: no heading, no JSON, no question."""
+
+QUESTION_PROMPT = """Write one quiz question for this Rabbit Hole lesson.
+
+Lesson (depth {depth}):
+{explanation}
+
+{focus}
+
+{difficulty}
+{missed}
+Reply with JSON only:
 {{
-  "explanation": "at most 100 words, following the Focus above",
-  "question": {{
-    "text": "one question that checks the idea",
-    "options": ["four", "answer", "choices", "here"],
-    "answer_index": the position (0-3) of the one correct option
-  }},
+  "text": "the question",
+  "options": ["four", "answer", "choices", "here"],
+  "answer_index": the position (0-3) of the one correct option
+}}
+
+Rules:
+- The question must be answerable from the lesson alone.
+""" + CONCEPT_RULES + "\n\n" + QUESTION_RULES
+
+MISSED_NOTE = """
+The player just got this question on the same idea wrong:
+{question}
+Ask a NEW question, not that one reworded. Keep it at this layer's difficulty:
+the lesson may be clearer now, but the question must not get easier.
+"""
+
+DETAILS_PROMPT = """The player is digging into: {root}
+Path so far: {path}
+This layer's topic: {topic}
+Already covered, do not repeat: {covered}
+
+This layer's explanation:
+{explanation}
+
+Pick this layer's artifact and the three tunnels the player can dig into next.
+{tunnels}
+
+Reply with JSON only:
+{{
   "artifact": {{
     "name": "a real object, discovery, person, or moment tied to this topic",
     "icon": one of {icons}
@@ -461,53 +621,130 @@ Write this layer as JSON with exactly these fields:
 }}
 
 Rules:
-- The question must be answerable from the explanation alone.
-- Tunnels go deeper from this layer, differ from each other, and avoid covered topics.
-
-""" + QUESTION_RULES
+- Tunnels go deeper from this layer, differ from each other, and avoid covered topics."""
 
 
-def generate_layer(topic, path, depth):
-    """Make one layer. `path` is the list of topics dug so far, oldest first."""
+def generate_explanation(topic, path, depth):
+    """Stream this layer's explanation. Yields text chunks as the model writes
+    them; join them for the full text. `path` is the list of topics dug so far,
+    oldest first."""
     if FAKE:
-        return _fake_layer(topic, depth)
-
-    root = path[0] if path else topic
-    prompt = LAYER_PROMPT.format(
-        root=root,
-        path=" -> ".join(path) if path else "(this is the first layer)",
+        yield from _fake_stream(_fake_layer(topic, depth)["explanation"])
+        return
+    prompt = EXPLANATION_PROMPT.format(
+        **_context(topic, path),
         topic=topic,
         depth=depth,
-        covered=", ".join(path) if path else "nothing yet",
         focus=focus_for(topic, path, depth),
-        difficulty=difficulty_for(depth),
-        icons=json.dumps(ICONS),
+        difficulty=explanation_difficulty(depth),
     )
+    yield from stream_model(prompt)
 
+
+def generate_question(explanation, depth, missed_question=None):
+    """Write a question for `explanation` and run it past the checker.
+    Returns {"text", "options", "answer_index"} with the options shuffled.
+    `missed_question` (cave-ins) is the question the player just got wrong,
+    so the new one isn't a reworded copy. Rejections are fed into the next
+    try; raises RuntimeError after MAX_TRIES."""
+    if FAKE:
+        return _fake_question(cave_in=missed_question is not None)
+
+    prompt = QUESTION_PROMPT.format(
+        explanation=explanation,
+        depth=depth,
+        focus=question_focus_for(depth),
+        difficulty=question_difficulty(depth),
+        missed=MISSED_NOTE.format(question=missed_question) if missed_question else "",
+    )
     last_error, feedback = None, None
     for attempt in range(1, MAX_TRIES + 1):
         try:
-            layer = extract_json(ask_model(with_feedback(prompt, feedback)))
-            validate_layer(layer)
-            check_question(layer["explanation"], layer["question"], depth)
-            layer["depth"] = depth  # set by our code, not trusted from the model
-            layer["topic"] = topic  # always the player's chosen topic, set by our code
-            shuffle_options(layer["question"])
-            return layer
+            q = extract_json(ask_model(with_feedback(prompt, feedback)))
+            _validate_question(q)
+            check_question(explanation, q, depth)
+            q = {"text": q["text"], "options": q["options"], "answer_index": q["answer_index"]}
+            return shuffle_options(q)
         except Rejected as e:
             last_error, feedback = e, e.reason
         except CheckerError as e:
             last_error = e  # keep the previous feedback; this one isn't the question's fault
         except (ValueError, json.JSONDecodeError) as e:
             last_error, feedback = e, f"the reply was not usable ({e})."
-        logger.warning("layer %r depth %d, try %d/%d failed: %s",
+        logger.warning("question depth %d, try %d/%d failed: %s",
+                       depth, attempt, MAX_TRIES, last_error)
+    raise RuntimeError(f"Could not generate a question: {last_error}")
+
+
+def generate_details(topic, path, depth, explanation):
+    """Pick the layer's artifact and its three tunnels.
+    Returns {"artifact": {"name", "icon"}, "tunnels": [3 strings]}."""
+    if FAKE:
+        fake = _fake_layer(topic, depth)
+        return {"artifact": fake["artifact"], "tunnels": fake["tunnels"]}
+
+    prompt = DETAILS_PROMPT.format(
+        **_context(topic, path),
+        topic=topic,
+        explanation=explanation,
+        tunnels=tunnels_focus_for(topic, path, depth),
+        icons=json.dumps(ICONS),
+    )
+    last_error, feedback = None, None
+    for attempt in range(1, MAX_TRIES + 1):
+        try:
+            details = extract_json(ask_model(with_feedback(prompt, feedback)))
+            _validate_details(details)
+            return {"artifact": details["artifact"], "tunnels": details["tunnels"]}
+        except (ValueError, json.JSONDecodeError) as e:
+            last_error, feedback = e, f"the reply was not usable ({e})."
+        logger.warning("details %r depth %d, try %d/%d failed: %s",
                        topic, depth, attempt, MAX_TRIES, last_error)
-    raise RuntimeError(f"Could not generate layer for {topic!r}: {last_error}")
+    raise RuntimeError(f"Could not pick artifact and tunnels for {topic!r}: {last_error}")
+
+
+def _full_explanation(make_stream, label):
+    """Collect a streamed explanation for callers that don't stream. Nobody has
+    seen it yet, so an unusable one (empty or too long) is simply regenerated."""
+    last_error = None
+    for attempt in range(1, MAX_TRIES + 1):
+        text = "".join(make_stream()).strip()
+        try:
+            _validate_explanation(text)
+            return text
+        except ValueError as e:
+            last_error = e
+            logger.warning("explanation %s, try %d/%d failed: %s",
+                           label, attempt, MAX_TRIES, e)
+    raise RuntimeError(f"Could not generate explanation for {label}: {last_error}")
+
+
+def generate_layer(topic, path, depth):
+    """Make one whole layer without streaming: the explanation, then its
+    question and its artifact/tunnels in parallel. `path` is the list of
+    topics dug so far, oldest first."""
+    if FAKE:
+        return _fake_layer(topic, depth)
+
+    explanation = _full_explanation(
+        lambda: generate_explanation(topic, path, depth), f"layer {topic!r}")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        question = pool.submit(generate_question, explanation, depth)
+        details = pool.submit(generate_details, topic, path, depth, explanation)
+        question, details = question.result(), details.result()
+    return {
+        "topic": topic,  # always the player's chosen topic, set by our code
+        "depth": depth,
+        "explanation": explanation,
+        "question": question,
+        "artifact": details["artifact"],
+        "tunnels": details["tunnels"],
+    }
 
 
 # ------------------------------------------------------------------ cave-ins
 
-CAVE_IN_PROMPT = """The player got this question wrong and needs the idea explained again.
+CAVE_IN_EXPLANATION_PROMPT = """The player got a question wrong and needs the idea explained again.
 
 Topic: {topic}
 Original explanation:
@@ -518,74 +755,57 @@ They chose: {chosen}
 Correct answer: {correct}
 
 Explain the SAME idea again using a different style: {style}.
-The style is only a way in. If you use an analogy or example, the explanation
-must also state the real idea plainly, in the topic's own terms.
-
-Then ask a NEW question on the same idea (not the same question reworded).
-The new question must be answerable from your new explanation alone.
-The question tests the concept, not your analogy or example:
-- The question and all four options are about {topic} itself, in its real
-  terms. Do not mention the analogy's or example's characters, objects, or
-  details, and do not ask what part of it stands for what.
-- Someone who understood the idea but skipped your analogy or example must
-  still be able to answer it.
-Keep the question at this layer's difficulty (the explanation can be clearer,
-but the question must not get easier):
+The style is only a way in. If you use an analogy or example, also state the
+real idea plainly, in the topic's own terms, so a question about the idea
+itself can be answered from your explanation alone.
+Make it clearer, not simpler: keep this layer's level.
 
 {difficulty}
 
-Reply with JSON only:
-{{
-  "explanation": "at most 100 words",
-  "question": {{
-    "text": "...",
-    "options": ["four", "answer", "choices", "here"],
-    "answer_index": the position (0-3) of the one correct option
-  }}
-}}
-
-""" + QUESTION_RULES
+At most 100 words. Reply with the explanation text only: no heading, no JSON,
+no question."""
 
 
-def cave_in(layer, chosen_index, attempt):
-    """Re-explain after a wrong answer. `attempt` counts cave-ins on this layer
-    (0 for the first), so each one uses a different style."""
-    style = STYLES[attempt % len(STYLES)]
+def cave_in_style(attempt):
+    """`attempt` counts cave-ins on this layer (0 for the first), so each one
+    uses a different style."""
+    return STYLES[attempt % len(STYLES)]
+
+
+def generate_cave_in_explanation(layer, chosen_index, attempt):
+    """Stream the re-explanation after a wrong answer. `layer` carries the
+    question the player just missed. Yields text chunks; the style used is
+    cave_in_style(attempt)."""
+    style = cave_in_style(attempt)
     if FAKE:
-        return _fake_cave_in(layer, style)
-
+        yield from _fake_stream(_fake_cave_in(layer, style)["explanation"])
+        return
     q = layer["question"]
-    prompt = CAVE_IN_PROMPT.format(
+    prompt = CAVE_IN_EXPLANATION_PROMPT.format(
         topic=layer["topic"],
         explanation=layer["explanation"],
         question=q["text"],
         chosen=q["options"][chosen_index] if 0 <= chosen_index < 4 else "(no answer)",
         correct=q["options"][q["answer_index"]],
         style=style,
-        difficulty=difficulty_for(layer.get("depth", 1)),
+        difficulty=explanation_difficulty(layer.get("depth", 1)),
     )
+    yield from stream_model(prompt)
 
-    depth = layer.get("depth", 1)
-    last_error, feedback = None, None
-    for try_num in range(1, MAX_TRIES + 1):
-        try:
-            result = extract_json(ask_model(with_feedback(prompt, feedback)))
-            _require(isinstance(result, dict), "reply must be a JSON object")
-            _validate_explanation(result.get("explanation"))
-            _validate_question(result.get("question"))
-            check_question(result["explanation"], result["question"], depth)
-            shuffle_options(result["question"])
-            return {"explanation": result["explanation"], "style": style,
-                    "question": result["question"]}
-        except Rejected as e:
-            last_error, feedback = e, e.reason
-        except CheckerError as e:
-            last_error = e
-        except (ValueError, json.JSONDecodeError) as e:
-            last_error, feedback = e, f"the reply was not usable ({e})."
-        logger.warning("cave-in %r depth %d, try %d/%d failed: %s",
-                       layer["topic"], depth, try_num, MAX_TRIES, last_error)
-    raise RuntimeError(f"Could not generate cave-in for {layer['topic']!r}: {last_error}")
+
+def cave_in(layer, chosen_index, attempt):
+    """Re-explain after a wrong answer without streaming: the new explanation,
+    then a new checked question for it. Returns {explanation, style, question}."""
+    style = cave_in_style(attempt)
+    if FAKE:
+        return _fake_cave_in(layer, style)
+
+    explanation = _full_explanation(
+        lambda: generate_cave_in_explanation(layer, chosen_index, attempt),
+        f"cave-in {layer['topic']!r}")
+    question = generate_question(explanation, layer.get("depth", 1),
+                                 missed_question=layer["question"]["text"])
+    return {"explanation": explanation, "style": style, "question": question}
 
 
 # ------------------------------------------------------------ generate ahead
@@ -605,6 +825,22 @@ def generate_ahead(path, depth, tunnels):
 
 
 # ------------------------------------------------------- fake mode (testing)
+
+def _fake_stream(text):
+    """Yield canned text a word at a time, like a streamed reply."""
+    for i, word in enumerate(text.split(" ")):
+        yield word if i == 0 else " " + word
+
+
+def _fake_question(cave_in=False):
+    if cave_in:
+        return {"text": "New question on this idea?",
+                "options": ["Right answer", "Wrong A", "Wrong B", "Wrong C"],
+                "answer_index": 0}
+    return {"text": "Which option is correct?",
+            "options": ["Wrong A", "Right answer", "Wrong B", "Wrong C"],
+            "answer_index": 1}
+
 
 def _fake_layer(topic, depth):
     return {
