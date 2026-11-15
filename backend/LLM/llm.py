@@ -621,18 +621,19 @@ QUESTION_FOCUS_ZOOM = "Focus: check the ONE specific idea this lesson teaches."
 # How niche the tunnels out of a layer are, by that layer's depth. They narrow
 # slowly: right after the first layer they are still broad, well-known parts
 # of the topic, and only the deep layers lead into specialist corners.
-# (deepest layer depth this applies to, template)
+# Titles may also get a little longer and more specific with depth.
+# (deepest layer depth this applies to, max title words asked for, template)
 TUNNEL_TIERS = [
-    (1, """Tunnels: three main parts or branches of {topic} that most people have
+    (1, 3, """Tunnels: three main parts or branches of {topic} that most people have
 heard of, each a clear step more specific than this overview. Pick the big,
 well-known areas, not specialist details."""),
-    (3, """Tunnels: three well-known parts of {topic}, each a bit narrower than this
+    (3, 3, """Tunnels: three well-known parts of {topic}, each a bit narrower than this
 layer but still broad: the kind of thing a textbook chapter or a popular
 article would cover. Not specialist details or obscure cases yet."""),
-    (5, """Tunnels: three more specific parts of {topic}, such as a particular
+    (5, 4, """Tunnels: three more specific parts of {topic}, such as a particular
 mechanism, a named case or example, or a key debate. Narrower than this layer,
 but still things a keen student of the subject would come across."""),
-    (None, """Tunnels: three niche parts of {topic}: specialist details, edge cases,
+    (None, 5, """Tunnels: three niche parts of {topic}: specialist details, edge cases,
 lesser-known findings, or open questions that only someone deep into the
 subject would know about. Each clearly narrower than this layer."""),
 ]
@@ -652,12 +653,28 @@ def question_focus_for(depth):
     return QUESTION_FOCUS_OVERVIEW if depth <= 1 else QUESTION_FOCUS_ZOOM
 
 
-def tunnels_focus_for(topic, path, depth):
+TUNNEL_TITLE_RULE = """
+Each tunnel is just the name of a subject, at most {words} words, like a chapter
+title. Not a sentence, a question, or a description of what the layer will teach."""
+
+
+def _tunnel_tier(path, depth):
     if _is_overview(path, depth):
         depth = 1
-    for deepest, template in TUNNEL_TIERS:
-        if deepest is None or depth <= deepest:
-            return template.format(topic=topic)
+    for tier in TUNNEL_TIERS:
+        if tier[0] is None or depth <= tier[0]:
+            return tier
+
+
+def tunnel_max_words(path, depth):
+    """Longest tunnel title accepted at this depth: one word of slack over
+    what the prompt asks for, so only clearly wordy titles are retried."""
+    return _tunnel_tier(path, depth)[1] + 1
+
+
+def tunnels_focus_for(topic, path, depth):
+    _, words, template = _tunnel_tier(path, depth)
+    return template.format(topic=topic) + TUNNEL_TITLE_RULE.format(words=words)
 
 
 def _context(topic, path):
@@ -820,15 +837,30 @@ def generate_details(topic, path, depth, explanation):
         icons=json.dumps(ICONS),
     )
     last_error, feedback = None, None
+    fallback = None  # last usable reply whose tunnel titles were too long
     for attempt in range(1, MAX_TRIES + 1):
         try:
             details = extract_json(ask_model(with_feedback(prompt, feedback)))
             _validate_details(details)
-            return {"artifact": details["artifact"], "tunnels": details["tunnels"]}
+            result = {"artifact": details["artifact"], "tunnels": details["tunnels"]}
+            # Too-long titles are soft: retried, but if every try is too long
+            # the last usable reply is shipped rather than ending the run.
+            max_words = tunnel_max_words(path, depth)
+            long = [t for t in result["tunnels"] if len(t.split()) > max_words]
+            if not long:
+                return result
+            fallback = result
+            last_error = f"tunnel titles too long: {long}"
+            feedback = (f"these tunnel titles are too long: {long}. Each tunnel is just "
+                        f"a subject name of at most {max_words - 1} words.")
         except (ValueError, json.JSONDecodeError) as e:
             last_error, feedback = e, f"the reply was not usable ({e})."
         logger.warning("details %r depth %d, try %d/%d failed: %s",
                        topic, depth, attempt, MAX_TRIES, last_error)
+    if fallback is not None:
+        logger.warning("details %r depth %d: shipping long tunnel titles after %d tries",
+                       topic, depth, MAX_TRIES)
+        return fallback
     raise RuntimeError(f"Could not pick artifact and tunnels for {topic!r}: {last_error}")
 
 
