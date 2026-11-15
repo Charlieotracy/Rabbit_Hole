@@ -1,10 +1,10 @@
 import { steppedCorners } from '../scene/sprites/generate'
-import { mirror, pixelRects, transpose } from '../scene/sprites/pixel'
+import { pixelRects } from '../scene/sprites/pixel'
 
 // Speech bubble: cream fill, ink outline with rounded pixel corners, hard shadow.
 //
 // variant: "bunny" (default) | "player" | "cave" | "artifact" | "plain"
-// tail:    "none" (default) | "down" | "left" | "left-low" (near the bottom) | "right"
+// tail:    "none" (default) | "down" (big, under the bubble) | "left-low" (small, on the left near the bottom)
 // round:   "lg" (big pixel-circle corners, for the bunny's main speech bubbles)
 //          | "md" (default) | "sm" (small, for the HUD)
 // label:   optional small heading inside, e.g. "LAYER 2 · EVENT HORIZON"
@@ -31,10 +31,19 @@ const TAIL_DOWN = [
   'LFL.......',
   'LL........',
 ]
-const TAIL_RIGHT = transpose(TAIL_DOWN)
-const TAIL_LEFT = mirror(TAIL_RIGHT)
-// Same tail flipped upside down, for a bubble whose speaker is below-left of it.
-const TAILS = { down: TAIL_DOWN, right: TAIL_RIGHT, left: TAIL_LEFT, 'left-low': [...TAIL_LEFT].reverse() }
+// Small side tail pointing down-left at the bunny. Kept short (6 pixels) so it
+// always fits on the straight part of the left edge, even on one-line bubbles.
+// The last two columns overlap the bubble: column 5 sits on its outline (open
+// in the middle so the fill flows through), column 6 is inside it.
+const TAIL_SIDE = [
+  '.....LF',
+  '....LFF',
+  '...LFFF',
+  '..LFFFF',
+  '.LFFFFF',
+  'LLLLLLF',
+]
+const TAILS = { down: TAIL_DOWN, 'left-low': TAIL_SIDE }
 const TAIL_PALETTE = { L: 'var(--bubble-line)', F: 'var(--bubble-fill)' }
 
 function Tail({ side }) {
@@ -43,6 +52,7 @@ function Tail({ side }) {
     <svg
       className={`sprite bubble__tail bubble__tail--${side}`}
       viewBox={`0 0 ${rows[0].length} ${rows.length}`}
+      style={{ width: `calc(var(--px) * ${rows[0].length})`, height: `calc(var(--px) * ${rows.length})` }}
       aria-hidden="true"
       focusable="false"
     >

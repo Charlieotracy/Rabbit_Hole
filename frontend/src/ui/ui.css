@@ -47,33 +47,20 @@
 .bubble--cave .bubble__label { color: var(--berry); }
 .bubble--artifact .bubble__label { color: var(--carrot-dark); }
 
-/* Tail: 10×10 art pixels at --px each. Two rows/columns overlap the bubble
-   (its outline plus one pixel of fill inside), so they always join up. */
-.bubble__tail {
-  position: absolute;
-  width: calc(var(--px) * 10);
-  height: calc(var(--px) * 10);
-}
+/* Tails: sized from their pixel grid (see Bubble.jsx). Each overlaps the
+   bubble's outline plus one pixel of fill, so they always join up. */
+.bubble__tail { position: absolute; }
 
 .bubble__tail--down {
   left: 56px;
   bottom: calc(var(--px) * -8);
 }
 
-.bubble__tail--left,
-.bubble__tail--left-low,
-.bubble__tail--right {
-  top: 22px;
-}
-
-.bubble__tail--left { left: calc(var(--px) * -8); }
-
+/* Bottom corners take 5 pixels (20px), so the tail sits just above them. */
 .bubble__tail--left-low {
-  top: auto;
-  bottom: 26px;
-  left: calc(var(--px) * -8);
+  left: calc(var(--px) * -5);
+  bottom: 22px;
 }
-.bubble__tail--right { right: calc(var(--px) * -8); }
 
 /* ---------- PixelButton ---------- */
 .pbtn {
