@@ -58,25 +58,30 @@ def _get_client():
 # and use the endpoint's default. Generation always uses the default.
 CHECKER_REASONING_EFFORT = os.environ.get("CHECKER_REASONING_EFFORT", "low").strip() or None
 
-# Flipped off the first time the endpoint refuses reasoning_effort, so one
-# unsupported setting doesn't break every call after it.
-_reasoning_effort_supported = True
+# The checker runs on a different model from the generator, so it doesn't
+# share the generator's blind spots when judging its questions. Set
+# CHECKER_MODEL_ENDPOINT to a serving endpoint in the same workspace; if it is
+# unset, the checker uses MODEL.
+CHECKER_MODEL = os.environ.get("CHECKER_MODEL_ENDPOINT", "").strip() or MODEL
+
+# Endpoints that refused reasoning_effort, so it is not sent to them again.
+_no_reasoning_effort = set()
 
 
-def ask_model(prompt, temperature=0.7, reasoning_effort=None):
-    """Send one prompt to the model and return its reply as plain text.
-    `reasoning_effort` asks a reasoning model to think less or more; None
-    leaves it at the endpoint's default."""
-    global _reasoning_effort_supported
+def ask_model(prompt, temperature=0.7, reasoning_effort=None, model=None):
+    """Send one prompt to a model and return its reply as plain text.
+    `model` is the serving endpoint (default MODEL). `reasoning_effort` asks a
+    reasoning model to think less or more; None leaves the endpoint default."""
+    model = model or MODEL
     kwargs = dict(
-        model=MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": prompt},
         ],
         temperature=temperature,
     )
-    if reasoning_effort and _reasoning_effort_supported:
+    if reasoning_effort and model not in _no_reasoning_effort:
         try:
             response = _get_client().chat.completions.create(
                 reasoning_effort=reasoning_effort, **kwargs)
@@ -85,9 +90,9 @@ def ask_model(prompt, temperature=0.7, reasoning_effort=None):
             from openai import BadRequestError
             if not isinstance(e, BadRequestError):
                 raise
-            _reasoning_effort_supported = False
-            logger.warning("endpoint refused reasoning_effort=%r (%s); "
-                           "sending calls without it from now on", reasoning_effort, e)
+            _no_reasoning_effort.add(model)
+            logger.warning("endpoint %s refused reasoning_effort=%r (%s); "
+                           "sending its calls without it from now on", model, reasoning_effort, e)
     response = _get_client().chat.completions.create(**kwargs)
     return text_from_content(response.choices[0].message.content)
 
@@ -254,10 +259,32 @@ def _options_text(q):
     return "\n".join(f"{i}. {o}" for i, o in enumerate(q["options"]))
 
 
+# Set if CHECKER_MODEL turns out not to exist or not be usable, so the checker
+# falls back to MODEL instead of failing every question.
+_checker_fallback = False
+
+
+def _checker_model_reply(prompt):
+    global _checker_fallback
+    from openai import NotFoundError, PermissionDeniedError
+
+    model = MODEL if _checker_fallback else CHECKER_MODEL
+    try:
+        return ask_model(prompt, temperature=0, model=model,
+                         reasoning_effort=CHECKER_REASONING_EFFORT)
+    except (NotFoundError, PermissionDeniedError) as e:
+        if model == MODEL:
+            raise
+        _checker_fallback = True
+        logger.warning("checker endpoint %s is not usable (%s); checking with %s instead",
+                       CHECKER_MODEL, e, MODEL)
+        return ask_model(prompt, temperature=0, model=MODEL,
+                         reasoning_effort=CHECKER_REASONING_EFFORT)
+
+
 def _ask_checker(prompt):
     try:
-        reply = extract_json(ask_model(prompt, temperature=0,
-                                       reasoning_effort=CHECKER_REASONING_EFFORT))
+        reply = extract_json(_checker_model_reply(prompt))
     except (ValueError, json.JSONDecodeError) as e:
         raise CheckerError(f"unreadable checker reply: {e}") from e
     if not isinstance(reply, dict):
