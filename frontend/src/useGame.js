@@ -7,8 +7,8 @@ import { reducedMotion, sleep } from './lib/motion'
 // only this file (through api.js) talks to the backend. The state machine
 // itself is in gameReducer.js.
 
-// After a right answer: the bunny digs down (~1.3s), then a pause before the tunnels.
-const DIG_ANIMATION_MS = 2400
+// After a right answer: the bunny cheers, then a pause before it shows the tunnels.
+const CHEER_PAUSE_MS = 2200
 
 // Runs an API call with a minimum duration, so quick responses still let the
 // digging animation read as digging instead of a flicker.
@@ -35,12 +35,11 @@ export function useGame() {
     }
   }, [])
 
-  // After a correct answer, hold the dig animation for a moment, then reveal
-  // the artifact and tunnels.
+  // After a correct answer, let the bunny cheer for a moment, then reveal the tunnels.
   const stage = state.breakthrough?.stage
   useEffect(() => {
     if (stage !== 'dig') return undefined
-    const t = setTimeout(() => dispatch({ type: 'reveal' }), reducedMotion() ? 200 : DIG_ANIMATION_MS)
+    const t = setTimeout(() => dispatch({ type: 'reveal' }), reducedMotion() ? 200 : CHEER_PAUSE_MS)
     return () => clearTimeout(t)
   }, [stage])
 

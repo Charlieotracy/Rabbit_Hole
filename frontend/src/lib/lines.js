@@ -30,8 +30,6 @@ export const RIGHT_ANSWER = 'You got it right!'
 
 export const TUNNEL_PROMPT = "Look, three new tunnels! Pick one and let's go deeper!"
 
-export const tunnelReply = (tunnel) => `Let's go: ${tunnel}`
-
 export const SURFACE_ASK = 'Head back up to the surface?'
 
 export const errorLine = (message) => `Hmm, the tunnel collapsed (${message}). Want to try that again?`

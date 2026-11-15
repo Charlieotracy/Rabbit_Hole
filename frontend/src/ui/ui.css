@@ -47,11 +47,12 @@
 .bubble--cave .bubble__label { color: var(--berry); }
 .bubble--artifact .bubble__label { color: var(--carrot-dark); }
 
-/* Tail: 10×9 art pixels at --px each. One row/column overlaps the outline. */
+/* Tail: 10×10 art pixels at --px each. Two rows/columns overlap the bubble
+   (its outline plus one pixel of fill inside), so they always join up. */
 .bubble__tail {
   position: absolute;
   width: calc(var(--px) * 10);
-  height: calc(var(--px) * 9);
+  height: calc(var(--px) * 10);
 }
 
 .bubble__tail--down {
@@ -60,13 +61,18 @@
 }
 
 .bubble__tail--left,
+.bubble__tail--left-low,
 .bubble__tail--right {
   top: 22px;
-  width: calc(var(--px) * 9);
-  height: calc(var(--px) * 10);
 }
 
 .bubble__tail--left { left: calc(var(--px) * -8); }
+
+.bubble__tail--left-low {
+  top: auto;
+  bottom: 26px;
+  left: calc(var(--px) * -8);
+}
 .bubble__tail--right { right: calc(var(--px) * -8); }
 
 /* ---------- PixelButton ---------- */
@@ -153,7 +159,7 @@
 .title__logo {
   position: relative;
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-logo);
   font-weight: 700;
   font-size: clamp(2.3rem, 8vw, 4.5rem);
   line-height: 1;

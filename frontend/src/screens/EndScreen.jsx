@@ -4,7 +4,6 @@ import TunnelMap from '../end/TunnelMap'
 import { endHeadline } from '../lib/lines'
 import { copyText, shareText } from '../lib/share'
 import Bunny from '../scene/sprites/Bunny'
-import { Burrow } from '../scene/sprites/props'
 import Bubble from '../ui/Bubble'
 import PixelButton from '../ui/PixelButton'
 import Title from '../ui/Title'
@@ -51,11 +50,9 @@ export default function EndScreen({ game }) {
             </div>
           </dl>
         </Bubble>
-        <div className="start__ground end__ground">
-          <span className="end__pop">
-            <Bunny mood="cheer" />
-          </span>
-          <Burrow className="start__burrow" />
+        {/* The bunny pops back up out of its hole once the camera reaches the surface. */}
+        <div className="start__ground end__ground" style={{ '--rise-delay': '1.2s' }}>
+          <Bunny mood="cheer" motion="rise" />
         </div>
       </section>
 

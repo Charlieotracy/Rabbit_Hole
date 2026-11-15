@@ -3,7 +3,6 @@ import ChatLog from '../chat/ChatLog'
 import Particles from '../effects/Particles'
 import DepthGauge from '../hud/DepthGauge'
 import Hud from '../hud/Hud'
-import { reducedMotion } from '../lib/motion'
 import { isDark } from '../lib/strata'
 import Bunny from '../scene/sprites/Bunny'
 
@@ -27,21 +26,13 @@ export default function RunScreen({ game }) {
   const [talking, setTalking] = useState(false)
   const flash = useFlash(game.event)
 
-  // Each new layer starts at the top of the page.
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' })
-  }, [game.depth])
-
-  // The bunny digs itself down after a right answer, pops back up to point
-  // out the tunnels, digs down again into the chosen tunnel, and drops in
-  // from above on each new layer.
-  const stage = game.breakthrough?.stage
-  let motion = 'drop'
-  if (game.pending === 'dig' || stage === 'dig') motion = 'sink'
-  else if (stage === 'reveal') motion = 'rise'
+  // The bunny cheers after a right answer, digs down into the tunnel you
+  // pick, and drops in from above on each new layer.
+  const motion = game.pending === 'dig' ? 'sink' : 'drop'
 
   let mood = 'idle'
   if (motion === 'sink') mood = 'dig'
+  else if (game.breakthrough?.stage === 'dig') mood = 'cheer'
   else if (flash?.type === 'cave') mood = 'dazed'
   else if (talking) mood = 'talk'
 

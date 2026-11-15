@@ -21,21 +21,3 @@ const CARROT_PALETTE = {
 export function Carrot({ scale = 3, className = '' }) {
   return <PixelSprite rows={CARROT} palette={CARROT_PALETTE} scale={scale} className={className} />
 }
-
-const BURROW = [
-  '....kkkkkkkk....',
-  '..kkSSSSSSSSkk..',
-  '.kSSKKKKKKKKSSk.',
-  'kSSKDDDDDDDDKSSk',
-  'kSKDDDDDDDDDDKSk',
-]
-const BURROW_PALETTE = {
-  k: 'var(--ink)',
-  S: 'var(--soil-1)',
-  K: 'var(--soil-3)',
-  D: '#1d130c',
-}
-
-export function Burrow({ scale = 4, className = '' }) {
-  return <PixelSprite rows={BURROW} palette={BURROW_PALETTE} scale={scale} className={className} />
-}

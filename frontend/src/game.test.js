@@ -80,44 +80,54 @@ test('a lost run (404) resets to the start screen with a message', () => {
   assert.equal(s.runCount, 1)
 })
 
-test('a fresh layer shows the explanation, then a delayed Ready button', () => {
+test('a fresh layer is one bunny message with the Ready button attached', () => {
   const msgs = buildMessages(run(...started))
-  assert.deepEqual(msgs.map((m) => m.kind), ['bunny', 'ready'])
-  assert.equal(msgs[1].label, 'Ready for a question?')
-  assert.ok(msgs[1].delay > 0)
+  assert.deepEqual(msgs.map((m) => m.kind), ['bunny'])
+  assert.equal(msgs[0].ready, true)
 })
 
 test('after Ready, the question and its options come in one bubble', () => {
   const msgs = buildMessages(run(...started, ready))
   assert.deepEqual(msgs.map((m) => m.kind), ['bunny', 'question'])
+  assert.equal(msgs[0].ready, false)
   assert.deepEqual(msgs[1].options, ['A', 'B', 'C', 'D'])
   assert.equal(msgs[1].answerable, true)
 })
 
-test('after a cave-in: old attempt dimmed, re-explanation, then Ready again', () => {
+test('after a cave-in: the pick stays on the old question, then re-explanation with Ready', () => {
   const s = run(...started, ready, { type: 'answer/pending', index: 2 }, { type: 'answer/wrong', turn: { ...turn(2), style: 'analogy' } })
   const msgs = buildMessages(s)
-  assert.deepEqual(msgs.map((m) => m.kind), ['bunny', 'question', 'player', 'bunny', 'bunny', 'ready'])
-  assert.equal(msgs[1].answerable, false)
-  assert.equal(msgs[2].result, 'wrong')
-  assert.ok(msgs.slice(0, 3).every((m) => m.old))
-  assert.match(msgs[3].text, /analogy/)
-  assert.equal(msgs[4].label, 'Explained as: analogy')
+  assert.deepEqual(msgs.map((m) => m.kind), ['bunny', 'question', 'bunny', 'bunny'])
+  assert.deepEqual([msgs[1].chosen, msgs[1].result, msgs[1].answerable], [2, 'wrong', false])
+  assert.match(msgs[2].text, /analogy/)
+  assert.equal(msgs[3].label, 'Explained as: analogy')
+  assert.equal(msgs[3].ready, true)
 })
 
-test('a right answer says so, then after the dig shows the tunnels', () => {
+test('every message comes from the bunny (no player bubbles)', () => {
+  const s = run(
+    ...started,
+    ready,
+    { type: 'answer/pending', index: 0 },
+    { type: 'answer/right', artifact: { name: 'Photo', icon: 'camera', depth: 1 }, tunnels: ['x', 'y', 'z'] },
+    { type: 'reveal' },
+    { type: 'dig/pending', index: 1 },
+  )
+  assert.ok(buildMessages(s).every((m) => ['bunny', 'question', 'typing'].includes(m.kind)))
+})
+
+test('a right answer says so, then after the dig the tunnels come with the prompt', () => {
   const broke = run(
     ...started,
     ready,
     { type: 'answer/pending', index: 0 },
     { type: 'answer/right', artifact: { name: 'Photo', icon: 'camera', depth: 1 }, tunnels: ['x', 'y', 'z'] },
   )
-  const during = buildMessages(broke)
-  assert.equal(during.at(-1).text, 'You got it right!')
-  const after = buildMessages(reducer(broke, { type: 'reveal' }))
-  assert.deepEqual(after.slice(-2).map((m) => m.kind), ['bunny', 'tunnels'])
-  assert.equal(after.at(-2).text, "Look, three new tunnels! Pick one and let's go deeper!")
-  assert.ok(!after.some((m) => m.kind === 'artifact'))
+  assert.equal(buildMessages(broke).at(-1).text, 'You got it right!')
+  const after = buildMessages(reducer(broke, { type: 'reveal' })).at(-1)
+  assert.equal(after.text, "Look, three new tunnels! Pick one and let's go deeper!")
+  assert.deepEqual(after.tunnels, ['x', 'y', 'z'])
+  assert.equal(after.chosenTunnel, null)
 })
 
 test('share text counts first tries and draws one square per cleared layer', () => {
